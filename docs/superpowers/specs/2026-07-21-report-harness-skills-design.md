@@ -36,7 +36,10 @@ report-harness/                          # 레포 = 플러그인 배포 원본 (
 ├── skills/report-pipeline/              # 오케스트레이터 스킬
 │   ├── SKILL.md
 │   ├── references/
-│   │   ├── style-guide.md               # §5 기관보고서 양식 성문화
+│   │   ├── style-guide.md               # §5 기관보고서 양식 성문화 [완료 — 코퍼스 34건]
+│   │   ├── format-profile.kca.md        # §6-0 KCA 기본 양식 프로파일 시드 [완료]
+│   │   ├── diagram-pool.md              # §7-3 표 기반 도식 판정 카탈로그 [완료]
+│   │   ├── table-pool.md                # §7-3 경영실적 표 부품 카탈로그 26유형 [완료]
 │   │   ├── md-profile.md                # §6 변환 가능 마크다운 프로파일
 │   │   └── hwpx-recipe.md               # §6 변환 절차·QA 체크리스트
 │   └── scripts/                         # §6 변환 툴체인 (stdlib-only python)
@@ -132,7 +135,7 @@ report-harness/                          # 레포 = 플러그인 배포 원본 (
 
 **대원칙 — "작성된 md 그대로" 변환**: 게이트②에서 승인된 20_draft.md의 내용·구조·표·각주가 hwpx에 1:1로 재현되어야 한다. prep은 마크업 정규화만 하며 내용을 한 글자도 바꾸지 않는다(무손실). 왕복 교차대조가 이 원칙의 검증 장치다. 이 원칙을 성립시키기 위해 writer가 처음부터 변환 가능 프로파일로만 작성한다 — "변환기에 맞춰 나중에 고치는" 것이 아니라 "변환되는 것만 쓰는" 구조.
 
-**0단계 — 양식 프로파일 자동 추출 (extract_format_profile.py + kordoc)**: 사용자가 기관 양식 hwpx를 제공하면(`template_hwpx` 설정 또는 대화 중 전달), kordoc `parse_metadata`·`parse_document`로 분석해 **줄바꿈 관례(계층별 문단 간격·들여쓰기), 폰트·사이즈(제목/본문/표/각주별), 계층형 구조 나열 기호와 단수, 표 스타일**을 `{state_dir}/format-profile.md`로 추출한다. 이 프로파일은 하드코딩이 아니라 **제공된 양식에서 도출된 rules**이며, 초안 작성(프리플라이트)·변환(build)·검증(validate) 세 지점에서 참조된다. 양식이 바뀌면 재추출로 갱신 — 기관별 프로파일 복수 보관 가능(`format-profile.{기관슬러그}.md`). 양식 미제공 시 kordoc 보고서 preset 기본값 사용.
+**0단계 — 양식 프로파일 자동 추출 (extract_format_profile.py + kordoc)**: 사용자가 기관 양식 hwpx를 제공하면(`template_hwpx` 설정 또는 대화 중 전달), kordoc `parse_metadata`·`parse_document`로 분석해 **줄바꿈 관례(계층별 문단 간격·들여쓰기), 폰트·사이즈(제목/본문/표/각주별), 계층형 구조 나열 기호와 단수, 표 스타일**을 `{state_dir}/format-profile.md`로 추출한다. 이 프로파일은 하드코딩이 아니라 **제공된 양식에서 도출된 rules**이며, 초안 작성(프리플라이트)·변환(build)·검증(validate) 세 지점에서 참조된다. 양식이 바뀌면 재추출로 갱신 — 기관별 프로파일 복수 보관 가능(`format-profile.{기관슬러그}.md`). 양식 미제공 시 kordoc 보고서 preset 기본값 사용. **KCA 프로파일은 `references/format-profile.kca.md`로 번들 시드 완료**(사용자 환경 기본값) — state_dir에 동명 프로파일이 있으면 그것이 우선.
 
 4단 방어:
 
@@ -269,7 +272,8 @@ md 최종본(20_draft.md)이 항상 SSOT — hwpx 변환이 끝내 실패해도 
 
 최종 배포 형태는 **Claude Code 플러그인 1개** — 스킬을 개별 cp하는 대신 플러그인 설치로 일괄 배포한다.
 
-- **구성**: `.claude-plugin/plugin.json` 매니페스트 + `skills/`(report-pipeline, report-research, humanize-korean) + `agents/`(humanize 계열 — ai-tell-detector, korean-style-rewriter, naturalness-reviewer 등 파이프라인이 실제 사용하는 것만 선별).
+- **구성**: `.claude-plugin/plugin.json` 매니페스트 + `skills/`(report-pipeline, report-research, humanize-korean) + `agents/`(humanize 계열 — ai-tell-detector, korean-style-rewriter, naturalness-reviewer 등 파이프라인이 실제 사용하는 것만 선별) + 번들 자산(도식 Pool hwpx — §7-3 표 원형 복제용, 기본 양식 hwp).
+- **배포 제외 (기밀·PII 가드)**: `form/보고서/`(기관 내부 실보고서 — 실명·연락처·내부 계획 포함)와 `docs/analysis/`(실보고서 인용 포함)는 **플러그인 패키지·공개 레포에 절대 포함하지 않는다**. 스타일 지식은 이미 style-guide.md로 규칙화(탈맥락·비식별)됐으므로 원문 배포가 불필요. 배포 스크립트에 제외 목록을 하드코딩하고, 패키징 시 PII 스캔(전화·이메일 패턴)을 통과 조건으로 둔다.
 - **humanize-korean 번들 방식**: 기존 `~/.claude/skills/humanize-korean`(및 관련 에이전트)을 레포로 **사본 동기화**해 플러그인에 포함. 원본의 업데이트를 주기적으로 반영(동기화 스크립트 또는 수동 cp — 구현 계획에서 확정). 플러그인 내 스킬 참조는 `plugin:skill` 네임스페이스 규약을 따른다.
 - **의존성 고지**: kordoc MCP는 플러그인에 포함되지 않는 외부 의존 — README에 설치 안내를 명기하고, 미설치 환경에선 md 인도 + 안내 메시지로 강등 동작(§10). korean-law·opendart 등 조사용 MCP는 선택 의존(없으면 일반 도구 대체, §4).
 - **버전·변경 관리**: plugin.json 버전 + CHANGELOG. rules·lessons 등 가변 상태는 플러그인 밖(`state_dir`)이므로 업그레이드에 안전.
