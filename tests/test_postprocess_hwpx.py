@@ -230,7 +230,7 @@ def test_spacing_yo_to_yo_inserts_6pt(tmp_path):
     summary = ph.process_file(str(p), star=False, spacing=True)
     assert [e["transition"] for e in summary["spacing"]["events"]] == ["yo_to_yo"]
     assert summary["spacing"]["events"][0]["height"] == 600
-    assert summary["target_found"] is False
+    assert summary["target_found"] is True
 
 
 # --- ③비파괴(텍스트 콘텐츠 불변) ------------------------------------------
