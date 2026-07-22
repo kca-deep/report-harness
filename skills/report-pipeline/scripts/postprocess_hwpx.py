@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """kordoc generate_document 산출 hwpx를 양식 정합으로 후처리한다 (stdlib-only).
 
-기능 2종:
+기능:
   --star-footnote  ＊ 시작 문단의 run charPrIDRef를 참고 스타일(header.xml에서
                     height=1300·fontRef=맑은고딕 계열)로 치환한다. kordoc은 ※만
                     참고 스타일로 인식하고 전각 ＊는 본문 스타일로 남는 결함의 후처리
@@ -9,8 +9,13 @@
   --spacing         계층 전환 지점(발신줄→□/□→ㅇ/ㅇ→-/-→＊/＊→표캡션/블록 구분)의
                     간격을 원본 KCA 양식 실측값(스페이서 문단 방식)으로 재현한다.
                     전환 지점에 이미 빈 문단이 있으면 그 charPr 높이를 치환하고,
-                    없으면 새 스페이서 문단을 삽입한다.
-  --all             위 두 기능을 모두 적용.
+                    없으면 새 스페이서 문단을 삽입한다. 같은 묶음으로 표 셀 텍스트
+                    가운데 정렬·표 유닛 앞뒤 간격 보정·제목 박스 테두리 제거도 적용한다.
+  --sender-size N   발신 줄(classify=="sending") 문단 run들의 charPr을 폰트는 유지한 채
+                    높이만 N(pt)로 치환한다. --all에는 포함되지 않는다(값 필요, 별도 지정).
+  --star-indent L,I ＊·※ 문단의 paraPr margin을 left=L(pt)·intent=I(pt, 음수 허용)로
+                    치환한다(prev/next 여백은 유지). --all에는 포함되지 않는다.
+  --all             --star-footnote·--spacing을 적용.
 
 실측 근거: /Users/bcchung81/workspace/claudian/reports/20260722/1313_하네스-AI성과-관리체계/
 research/fetched/양식-문단간격/추출결과.md — 계층 간격은 paraPr 위/아래 간격이 아니라
@@ -44,6 +49,11 @@ TRANSITIONS = {
     ("dash", "star"): ("dash_to_star", 300),
     ("yo", "star"): ("yo_to_star", 300),        # 양식 미실측 전환 — dash→star 3pt 유추 적용
     ("star", "caption"): ("star_to_caption", 1000),
+    ("caption", "table"): ("caption_to_table", 300),   # 캡션→표 3pt(사용자 확정 '26.7.22)
+    ("table", "cham"): ("table_to_cham", 300),         # 표→※ 3pt
+    ("yo", "caption"): ("yo_to_caption", 600),         # 문단→캡션 6pt
+    ("dash", "caption"): ("dash_to_caption", 600),
+    ("cham", "caption"): ("cham_to_caption", 600),
 }
 BLOCK_BOUNDARY_HEIGHT = 1500  # 직전 블록 끝 → 새 □ (일반 빈줄)
 
@@ -326,6 +336,206 @@ def apply_center_tables(header_root, section_roots):
     return {"centered": centered, "new_parapr": {k: v for k, v in cache.items() if k != v}}
 
 
+def _iter_content_tables(section_roots):
+    """(hp:tbl 요소, is_title_box) 쌍을 문서 순서대로 생성한다.
+    첫 □ 문단 이전에 나오는 표는 제목 박스(is_title_box=True)로 판정한다."""
+    p_tag = qn("hp", "p")
+    seen_dae = False
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag:
+                continue
+            kind = classify(child)
+            if kind == "dae":
+                seen_dae = True
+                continue
+            if kind != "table":
+                continue
+            for run in child.findall(qn("hp", "run")):
+                tbl = run.find(qn("hp", "tbl"))
+                if tbl is not None:
+                    yield tbl, not seen_dae
+
+
+def apply_center_cell_text(header_root, section_roots):
+    """본문 콘텐츠 표(제목 박스 제외)의 hp:tbl 내부 subList 문단 전부를 가운데 정렬한다."""
+    p_tag = qn("hp", "p")
+    cache = {}
+    tables = 0
+    paragraphs = 0
+    for tbl, is_title in _iter_content_tables(section_roots):
+        if is_title:
+            continue
+        tables += 1
+        for cell_p in tbl.iter(p_tag):
+            base_id = cell_p.get("paraPrIDRef")
+            if base_id is None:
+                continue
+            new_id = ensure_centered_clone(header_root, base_id, cache)
+            if new_id != base_id:
+                cell_p.set("paraPrIDRef", new_id)
+            paragraphs += 1
+    return {"tables": tables, "paragraphs": paragraphs}
+
+
+BORDER_TAGS = ("leftBorder", "rightBorder", "topBorder", "bottomBorder")
+
+
+def ensure_borderless_fill(header_root):
+    """4변 전부 type=NONE인 borderFill id를 재사용하거나, 없으면 첫 borderFill을
+    복제해 leftBorder/rightBorder/topBorder/bottomBorder만 NONE으로 바꿔 등록한다
+    (slash/backSlash 대각선은 건드리지 않는다)."""
+    borderfills = header_root.find(f".//{qn('hh', 'borderFills')}")
+    for bf in borderfills.findall(qn("hh", "borderFill")):
+        if all((el := bf.find(qn("hh", t))) is not None and el.get("type") == "NONE"
+               for t in BORDER_TAGS):
+            return bf.get("id")
+    template = borderfills.find(qn("hh", "borderFill"))
+    new_bf = copy.deepcopy(template)
+    max_id = max(int(bf.get("id")) for bf in borderfills.findall(qn("hh", "borderFill")))
+    new_id = str(max_id + 1)
+    new_bf.set("id", new_id)
+    for t in BORDER_TAGS:
+        el = new_bf.find(qn("hh", t))
+        if el is not None:
+            el.set("type", "NONE")
+    borderfills.append(new_bf)
+    borderfills.set("itemCnt", str(int(borderfills.get("itemCnt", "0")) + 1))
+    return new_id
+
+
+def apply_title_box_borderless(header_root, section_roots):
+    """제목 박스(첫 □ 이전 표)의 hp:tbl·hp:tc 등 borderFillIDRef 참조를
+    무테두리 borderFill로 교체한다."""
+    title_tables = [tbl for tbl, is_title in _iter_content_tables(section_roots) if is_title]
+    if not title_tables:
+        return {"found": False, "fills_replaced": 0}
+    fill_id = ensure_borderless_fill(header_root)
+    replaced = 0
+    for tbl in title_tables:
+        for el in tbl.iter():
+            ref = el.get("borderFillIDRef")
+            if ref is not None and ref != fill_id:
+                el.set("borderFillIDRef", fill_id)
+                replaced += 1
+    return {"found": True, "fills_replaced": replaced}
+
+
+def ensure_charpr_sized(header_root, base_id, height, cache):
+    """base_id charPr을 폰트는 유지한 채 height(HWPUNIT)만 바꾼 복제본 id를 반환한다."""
+    key = (base_id, height)
+    if key in cache:
+        return cache[key]
+    charprops = header_root.find(f".//{qn('hh', 'charProperties')}")
+    base = None
+    for cp in charprops.findall(qn("hh", "charPr")):
+        if cp.get("id") == base_id:
+            base = cp
+            break
+    if base is None:
+        cache[key] = base_id
+        return base_id
+    if base.get("height") == str(height):
+        cache[key] = base_id
+        return base_id
+    new_cp = copy.deepcopy(base)
+    max_id = max(int(cp.get("id")) for cp in charprops.findall(qn("hh", "charPr")))
+    new_id = str(max_id + 1)
+    new_cp.set("id", new_id)
+    new_cp.set("height", str(height))
+    charprops.append(new_cp)
+    charprops.set("itemCnt", str(int(charprops.get("itemCnt", "0")) + 1))
+    cache[key] = new_id
+    return new_id
+
+
+def apply_sender_size(header_root, section_roots, pt):
+    """발신 줄(classify=='sending') 문단 run의 charPr 크기를 pt로 치환한다."""
+    height = int(round(pt * 100))
+    p_tag = qn("hp", "p")
+    cache = {}
+    found = 0
+    changed = 0
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag or classify(child) != "sending":
+                continue
+            found += 1
+            for run in child.findall(qn("hp", "run")):
+                base_id = run.get("charPrIDRef")
+                if base_id is None:
+                    continue
+                new_id = ensure_charpr_sized(header_root, base_id, height, cache)
+                if new_id != base_id:
+                    run.set("charPrIDRef", new_id)
+                    changed += 1
+    return {"height": height, "sending_found": found, "runs_changed": changed}
+
+
+def ensure_indent_parapr(header_root, base_id, left, intent, cache):
+    """base_id paraPr을 margin.left=left·margin.intent=intent(HWPUNIT, 음수 허용)로
+    바꾼 복제본 id를 반환한다. prev/next 여백은 base 값을 그대로 유지한다."""
+    key = (base_id, left, intent)
+    if key in cache:
+        return cache[key]
+    paraprops = header_root.find(f".//{qn('hh', 'paraProperties')}")
+    base = None
+    for pp in paraprops.findall(qn("hh", "paraPr")):
+        if pp.get("id") == base_id:
+            base = pp
+            break
+    if base is None:
+        cache[key] = base_id
+        return base_id
+    margin = base.find(qn("hh", "margin"))
+    if margin is not None:
+        cur_left = margin.find(qn("hc", "left"))
+        cur_intent = margin.find(qn("hc", "intent"))
+        if (cur_left is not None and cur_left.get("value") == str(left)
+                and cur_intent is not None and cur_intent.get("value") == str(intent)):
+            cache[key] = base_id
+            return base_id
+    new_pp = copy.deepcopy(base)
+    max_id = max(int(pp.get("id")) for pp in paraprops.findall(qn("hh", "paraPr")))
+    new_id = str(max_id + 1)
+    new_pp.set("id", new_id)
+    nmargin = new_pp.find(qn("hh", "margin"))
+    if nmargin is not None:
+        nleft = nmargin.find(qn("hc", "left"))
+        nintent = nmargin.find(qn("hc", "intent"))
+        if nleft is not None:
+            nleft.set("value", str(left))
+        if nintent is not None:
+            nintent.set("value", str(intent))
+    paraprops.append(new_pp)
+    paraprops.set("itemCnt", str(int(paraprops.get("itemCnt", "0")) + 1))
+    cache[key] = new_id
+    return new_id
+
+
+def apply_star_indent(header_root, section_roots, left_pt, intent_pt):
+    """＊·※ 문단의 paraPr을 left=left_pt(pt)·intent=intent_pt(pt, 음수 허용)로 치환한다."""
+    left = int(round(left_pt * 100))
+    intent = int(round(intent_pt * 100))
+    p_tag = qn("hp", "p")
+    cache = {}
+    found = 0
+    changed = 0
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag or classify(child) not in ("star", "cham"):
+                continue
+            found += 1
+            base_id = child.get("paraPrIDRef")
+            if base_id is None:
+                continue
+            new_id = ensure_indent_parapr(header_root, base_id, left, intent, cache)
+            if new_id != base_id:
+                child.set("paraPrIDRef", new_id)
+                changed += 1
+    return {"left": left, "intent": intent, "found": found, "changed": changed}
+
+
 CONTENT_KINDS = {"sending", "dae", "yo", "dash", "star", "cham", "caption", "table", "other"}
 
 
@@ -405,9 +615,11 @@ def serialize_xml(root):
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + body).encode("utf-8")
 
 
-def process_file(path, star=False, spacing=False):
-    if not (star or spacing):
-        raise PostprocessError("--star-footnote/--spacing/--all 중 최소 하나는 지정해야 합니다")
+def process_file(path, star=False, spacing=False, sender_size=None, star_indent=None):
+    if not (star or spacing or sender_size is not None or star_indent is not None):
+        raise PostprocessError(
+            "--star-footnote/--spacing/--sender-size/--star-indent/--all 중 최소 하나는 지정해야 합니다"
+        )
 
     with zipfile.ZipFile(path) as z:
         infos = z.infolist()
@@ -452,6 +664,37 @@ def process_file(path, star=False, spacing=False):
             any_target_found = True
             any_change = True
 
+        ccr = apply_center_cell_text(header_root, list(section_roots.values()))
+        summary["center_cells"] = ccr
+        if ccr["tables"] > 0:
+            any_target_found = True
+        if ccr["paragraphs"] > 0:
+            any_change = True
+
+        tbr = apply_title_box_borderless(header_root, list(section_roots.values()))
+        summary["title_box"] = tbr
+        if tbr["found"]:
+            any_target_found = True
+        if tbr["fills_replaced"] > 0:
+            any_change = True
+
+    if sender_size is not None:
+        ssr = apply_sender_size(header_root, list(section_roots.values()), sender_size)
+        summary["sender_size"] = ssr
+        if ssr["sending_found"] > 0:
+            any_target_found = True
+        if ssr["runs_changed"] > 0:
+            any_change = True
+
+    if star_indent is not None:
+        left_pt, intent_pt = star_indent
+        sir = apply_star_indent(header_root, list(section_roots.values()), left_pt, intent_pt)
+        summary["star_indent"] = sir
+        if sir["found"] > 0:
+            any_target_found = True
+        if sir["changed"] > 0:
+            any_change = True
+
     data["Contents/header.xml"] = serialize_xml(header_root)
     for name, root in section_roots.items():
         data[name] = serialize_xml(root)
@@ -477,6 +720,7 @@ def process_file(path, star=False, spacing=False):
 
 
 USAGE = ("usage: postprocess_hwpx.py <file.hwpx> [--star-footnote] [--spacing] [--all]\n"
+         "                          [--sender-size PT] [--star-indent LEFT,INTENT]\n"
          "exit 0: 변경 적용 완료 | exit 1: 대상 없음(무변경) | exit 2: 인자/파일/구조 오류")
 
 
@@ -484,15 +728,58 @@ def main(argv):
     if len(argv) < 2:
         print(USAGE, file=sys.stderr)
         return 2
-    path, flags = argv[0], set(argv[1:])
-    valid = {"--star-footnote", "--spacing", "--all"}
-    if not flags or not flags <= valid:
+    path, rest = argv[0], argv[1:]
+    valid_bool = {"--star-footnote", "--spacing", "--all"}
+    star = spacing = all_flag = False
+    sender_size = None
+    star_indent = None
+    i = 0
+    while i < len(rest):
+        arg = rest[i]
+        if arg in valid_bool:
+            if arg == "--star-footnote":
+                star = True
+            elif arg == "--spacing":
+                spacing = True
+            else:
+                all_flag = True
+            i += 1
+        elif arg == "--sender-size":
+            if i + 1 >= len(rest):
+                print(USAGE, file=sys.stderr)
+                return 2
+            try:
+                sender_size = float(rest[i + 1])
+            except ValueError:
+                print(USAGE, file=sys.stderr)
+                return 2
+            i += 2
+        elif arg == "--star-indent":
+            if i + 1 >= len(rest):
+                print(USAGE, file=sys.stderr)
+                return 2
+            parts = rest[i + 1].split(",")
+            if len(parts) != 2:
+                print(USAGE, file=sys.stderr)
+                return 2
+            try:
+                star_indent = (float(parts[0]), float(parts[1]))
+            except ValueError:
+                print(USAGE, file=sys.stderr)
+                return 2
+            i += 2
+        else:
+            print(USAGE, file=sys.stderr)
+            return 2
+
+    star = star or all_flag
+    spacing = spacing or all_flag
+    if not (star or spacing or sender_size is not None or star_indent is not None):
         print(USAGE, file=sys.stderr)
         return 2
-    star = "--star-footnote" in flags or "--all" in flags
-    spacing = "--spacing" in flags or "--all" in flags
     try:
-        summary = process_file(path, star=star, spacing=spacing)
+        summary = process_file(path, star=star, spacing=spacing,
+                                sender_size=sender_size, star_indent=star_indent)
     except PostprocessError as e:
         print(json.dumps({"error": str(e)}, ensure_ascii=False))
         return 2

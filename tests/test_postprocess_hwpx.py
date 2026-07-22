@@ -1,4 +1,4 @@
-import sys, pathlib, zipfile, io
+import sys, pathlib, zipfile, io, re
 import xml.etree.ElementTree as ET
 import pytest
 
@@ -16,6 +16,24 @@ HEADER_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
         <hh:font id="1" face="맑은고딕" type="TTF" isEmbedded="0"/>
       </hh:fontface>
     </hh:fontfaces>
+    <hh:borderFills itemCnt="2">
+      <hh:borderFill id="1" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0">
+        <hh:slash type="NONE" Crooked="0" isCounter="0"/>
+        <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
+        <hh:leftBorder type="SOLID" width="0.12 mm" color="#000000"/>
+        <hh:rightBorder type="SOLID" width="0.12 mm" color="#000000"/>
+        <hh:topBorder type="SOLID" width="0.12 mm" color="#000000"/>
+        <hh:bottomBorder type="SOLID" width="0.12 mm" color="#000000"/>
+      </hh:borderFill>
+      <hh:borderFill id="2" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0">
+        <hh:slash type="NONE" Crooked="0" isCounter="0"/>
+        <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
+        <hh:leftBorder type="NONE" width="0.1 mm" color="#000000"/>
+        <hh:rightBorder type="NONE" width="0.1 mm" color="#000000"/>
+        <hh:topBorder type="NONE" width="0.1 mm" color="#000000"/>
+        <hh:bottomBorder type="NONE" width="0.1 mm" color="#000000"/>
+      </hh:borderFill>
+    </hh:borderFills>
     <hh:charProperties itemCnt="2">
       <hh:charPr id="0" height="1500" textColor="#000000" shadeColor="none" useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="1">
         <hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
@@ -350,3 +368,278 @@ def test_center_tables_and_captions(tmp_path):
     seg2 = sec[max(0, j - 400):j]
     pid2 = _re.findall(r'paraPrIDRef="(\d+)"', seg2)[-1]
     assert pid2 == "0"
+
+
+# --- ④표-문단 간격 보정 전환 값 -------------------------------------------
+
+def test_new_table_spacing_transitions():
+    assert ph.transition_for("caption", "table") == ("caption_to_table", 300)
+    assert ph.transition_for("table", "cham") == ("table_to_cham", 300)
+    assert ph.transition_for("yo", "caption") == ("yo_to_caption", 600)
+    assert ph.transition_for("dash", "caption") == ("dash_to_caption", 600)
+    assert ph.transition_for("cham", "caption") == ("cham_to_caption", 600)
+    # table→dae 블록 경계 15pt는 유지(일반 block_boundary 규칙)
+    assert ph.transition_for("table", "dae") == ("block_boundary", 1500)
+
+
+# --- ⑤표 셀 텍스트 가운데 정렬(제목 박스 제외) -----------------------------
+
+# 시나리오: 제목 박스 표(첫 □ 이전) → 발신줄 → □1 → 캡션 → 콘텐츠 표
+TITLE_BOX_SECTION_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:tbl id="1" rowCnt="1" colCnt="1" borderFillIDRef="1"><hp:tr><hp:tc borderFillIDRef="1"><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>제목텍스트</hp:t></hp:run></hp:p></hp:subList></hp:tc></hp:tr></hp:tbl></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>&lt; '26. 1. 1.(목), 테스트팀 &gt;</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 제목1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>[ 표 제목 ]</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:tbl id="2" rowCnt="1" colCnt="1"><hp:tr><hp:tc><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>셀값</hp:t></hp:run></hp:p></hp:subList></hp:tc></hp:tr></hp:tbl></hp:run></hp:p>
+</hs:sec>
+"""
+
+
+def test_center_cell_text_excludes_title_box(tmp_path):
+    p = tmp_path / "title_box.hwpx"
+    build_hwpx(str(p), section_xml=TITLE_BOX_SECTION_XML)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["center_cells"]["tables"] == 1       # 제목 박스 표는 제외, 콘텐츠 표만 카운트
+    assert summary["center_cells"]["paragraphs"] == 1
+
+    with zipfile.ZipFile(p) as z:
+        sec = z.read("Contents/section0.xml").decode()
+
+    i_title_cell = sec.find("제목텍스트")
+    seg_title = sec[max(0, i_title_cell - 200):i_title_cell]
+    pid_title = re.findall(r'paraPrIDRef="(\d+)"', seg_title)[-1]
+    assert pid_title == "0"  # 제목 박스 셀은 가운데 정렬 대상에서 제외되어 원래 paraPr 유지
+
+    i_cell = sec.find("셀값")
+    seg_cell = sec[max(0, i_cell - 200):i_cell]
+    pid_cell = re.findall(r'paraPrIDRef="(\d+)"', seg_cell)[-1]
+    assert pid_cell != "0"  # 콘텐츠 표 셀은 새 CENTER paraPr로 치환됨
+
+    with zipfile.ZipFile(p) as z:
+        hdr = z.read("Contents/header.xml").decode()
+    m = re.search(rf'<hh:paraPr id="{pid_cell}"[^>]*>.*?</hh:paraPr>', hdr, re.S)
+    assert 'horizontal="CENTER"' in m.group()
+
+
+def test_center_cell_text_on_content_table(hwpx_file):
+    summary = ph.process_file(str(hwpx_file), star=False, spacing=True)
+    assert summary["center_cells"]["tables"] == 1
+    assert summary["center_cells"]["paragraphs"] == 1
+    with zipfile.ZipFile(hwpx_file) as z:
+        hdr = z.read("Contents/header.xml").decode()
+        sec = z.read("Contents/section0.xml").decode()
+    i = sec.find("셀")
+    seg = sec[max(0, i - 200):i]
+    pid = re.findall(r'paraPrIDRef="(\d+)"', seg)[-1]
+    assert pid != "0"
+    m = re.search(rf'<hh:paraPr id="{pid}"[^>]*>.*?</hh:paraPr>', hdr, re.S)
+    assert 'horizontal="CENTER"' in m.group()
+
+
+# --- ⑥제목 박스 테두리 제거 -------------------------------------------------
+
+def test_title_box_borderless_replaces_refs(tmp_path):
+    p = tmp_path / "title_borderless2.hwpx"
+    build_hwpx(str(p), section_xml=TITLE_BOX_SECTION_XML)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["title_box"]["found"] is True
+    assert summary["title_box"]["fills_replaced"] >= 2  # hp:tbl + hp:tc 각각 치환
+    with zipfile.ZipFile(p) as z:
+        sec = z.read("Contents/section0.xml").decode()
+    i = sec.find("제목텍스트")
+    seg = sec[max(0, i - 400):i]
+    assert 'borderFillIDRef="2"' in seg  # 무테두리 fill(id=2, 헤더 fixture 기존 등록분) 재사용
+
+
+def test_title_box_borderless_creates_fill_when_missing(tmp_path):
+    header_no_borderless = HEADER_XML.replace(
+        '<hh:leftBorder type="NONE" width="0.1 mm" color="#000000"/>\n'
+        '        <hh:rightBorder type="NONE" width="0.1 mm" color="#000000"/>\n'
+        '        <hh:topBorder type="NONE" width="0.1 mm" color="#000000"/>\n'
+        '        <hh:bottomBorder type="NONE" width="0.1 mm" color="#000000"/>',
+        '<hh:leftBorder type="SOLID" width="0.1 mm" color="#000000"/>\n'
+        '        <hh:rightBorder type="SOLID" width="0.1 mm" color="#000000"/>\n'
+        '        <hh:topBorder type="SOLID" width="0.1 mm" color="#000000"/>\n'
+        '        <hh:bottomBorder type="SOLID" width="0.1 mm" color="#000000"/>',
+    )
+    bf_block = re.search(
+        r'<hh:borderFills.*?</hh:borderFills>', header_no_borderless, re.S).group()
+    assert 'Border type="NONE"' not in bf_block  # left/right/top/bottomBorder 전부 SOLID(대각선 slash/backSlash는 NONE 그대로)
+    p = tmp_path / "title_borderless_new.hwpx"
+    build_hwpx(str(p), header_xml=header_no_borderless, section_xml=TITLE_BOX_SECTION_XML)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["title_box"]["found"] is True
+    assert summary["title_box"]["fills_replaced"] >= 2
+    with zipfile.ZipFile(p) as z:
+        hdr = z.read("Contents/header.xml").decode()
+    assert 'itemCnt="3"' in re.search(r'<hh:borderFills itemCnt="(\d+)"', hdr).group()
+    new_fill = re.search(r'<hh:borderFill id="3"[^>]*>.*?</hh:borderFill>', hdr, re.S).group()
+    assert len(re.findall(r'Border type="NONE"', new_fill)) == 4  # left/right/top/bottom 전부 NONE
+    assert 'slash type="NONE"' in new_fill  # 대각선(slash/backSlash)은 원본 그대로 보존(원래도 NONE)
+
+
+def test_title_box_not_found_when_no_table_before_dae(hwpx_file):
+    # hwpx_file(기존 SECTION_XML)은 첫 □ 이전에 표가 없다(첫 표는 □1 이후) → 제목 박스 없음
+    summary = ph.process_file(str(hwpx_file), star=False, spacing=True)
+    assert summary["title_box"]["found"] is False
+    assert summary["title_box"]["fills_replaced"] == 0
+
+
+def test_ensure_borderless_fill_idempotent(tmp_path):
+    p = tmp_path / "idem.hwpx"
+    build_hwpx(str(p), section_xml=TITLE_BOX_SECTION_XML)
+    ph.process_file(str(p), star=False, spacing=True)
+    summary2 = ph.process_file(str(p), star=False, spacing=True)
+    assert summary2["title_box"]["found"] is True
+    assert summary2["title_box"]["fills_replaced"] == 0  # 이미 치환됨 — 재실행 안전
+
+
+# --- ⑦발신 크기 훅 ----------------------------------------------------------
+
+def test_apply_sender_size_preserves_font(hwpx_file):
+    summary = ph.process_file(str(hwpx_file), star=False, spacing=False, sender_size=13)
+    r = summary["sender_size"]
+    assert r["height"] == 1300
+    assert r["sending_found"] == 1
+    assert r["runs_changed"] == 1
+    with zipfile.ZipFile(hwpx_file) as z:
+        hdr = z.read("Contents/header.xml").decode()
+        sec = z.read("Contents/section0.xml").decode()
+    i = sec.find("테스트팀")
+    seg = sec[max(0, i - 200):i]
+    new_id = re.findall(r'charPrIDRef="(\d+)"', seg)[-1]
+    assert new_id != "0"
+    cp = re.search(rf'<hh:charPr id="{new_id}"[^>]*>.*?</hh:charPr>', hdr, re.S).group()
+    assert 'height="1300"' in cp
+    assert 'hangul="0"' in cp  # 발신 줄 원 charPr(id=0, 휴먼명조) 기반 복제 — 기존 height=1300(id=1, 맑은고딕)과 다른 폰트 유지
+
+
+def test_apply_sender_size_idempotent(hwpx_file):
+    ph.process_file(str(hwpx_file), star=False, spacing=False, sender_size=13)
+    summary2 = ph.process_file(str(hwpx_file), star=False, spacing=False, sender_size=13)
+    assert summary2["sender_size"]["runs_changed"] == 0
+
+
+def test_apply_sender_size_no_sending_line(tmp_path):
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 요지1</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "nosend.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=False, sender_size=13)
+    assert summary["sender_size"]["sending_found"] == 0
+    assert summary["target_found"] is False
+
+
+# --- ⑧＊/※ 들여쓰기 훅 -------------------------------------------------------
+
+def test_apply_star_indent_applies_to_star_and_cham(tmp_path):
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>＊ 각주1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>※ 참조1</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "indent.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=False, star_indent=(15, -7.5))
+    r = summary["star_indent"]
+    assert r["left"] == 1500
+    assert r["intent"] == -750
+    assert r["found"] == 2
+    assert r["changed"] == 2
+
+    with zipfile.ZipFile(p) as z:
+        hdr = z.read("Contents/header.xml").decode()
+        sec = z.read("Contents/section0.xml").decode()
+
+    i_star = sec.find("＊ 각주1")
+    seg_star = sec[max(0, i_star - 200):i_star]
+    pid_star = re.findall(r'paraPrIDRef="(\d+)"', seg_star)[-1]
+    i_cham = sec.find("※ 참조1")
+    seg_cham = sec[max(0, i_cham - 200):i_cham]
+    pid_cham = re.findall(r'paraPrIDRef="(\d+)"', seg_cham)[-1]
+    assert pid_star != "0" and pid_cham != "0"
+    assert pid_star == pid_cham  # 동일 base(paraPrIDRef=0)·동일 값 → 같은 복제본 재사용
+
+    pp = re.search(rf'<hh:paraPr id="{pid_star}"[^>]*>.*?</hh:paraPr>', hdr, re.S).group()
+    assert '<hc:left value="1500"' in pp
+    assert '<hc:intent value="-750"' in pp
+    assert '<hc:prev value="0"' in pp  # prev/next 여백은 유지(변경 없음)
+    assert '<hc:next value="0"' in pp
+
+
+def test_apply_star_indent_idempotent(tmp_path):
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>＊ 각주1</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "indent2.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    ph.process_file(str(p), star=False, spacing=False, star_indent=(15, -7.5))
+    summary2 = ph.process_file(str(p), star=False, spacing=False, star_indent=(15, -7.5))
+    assert summary2["star_indent"]["changed"] == 0
+
+
+# --- CLI: --sender-size / --star-indent 파싱 -------------------------------
+
+def test_main_sender_size_cli(hwpx_file, capsys):
+    rc = ph.main([str(hwpx_file), "--sender-size", "13"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = __import__("json").loads(out)
+    assert payload["sender_size"]["height"] == 1300
+    assert "spacing" not in payload  # --spacing 미지정 시 다른 기능은 실행 안 됨
+
+
+def test_main_star_indent_cli(hwpx_file, capsys):
+    rc = ph.main([str(hwpx_file), "--star-indent", "15,-7.5"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = __import__("json").loads(out)
+    assert payload["star_indent"]["left"] == 1500
+    assert payload["star_indent"]["intent"] == -750
+
+
+def test_main_sender_size_missing_value_exit2(hwpx_file):
+    rc = ph.main([str(hwpx_file), "--sender-size"])
+    assert rc == 2
+
+
+def test_main_sender_size_non_numeric_exit2(hwpx_file):
+    rc = ph.main([str(hwpx_file), "--sender-size", "abc"])
+    assert rc == 2
+
+
+def test_main_star_indent_bad_format_exit2(hwpx_file):
+    rc = ph.main([str(hwpx_file), "--star-indent", "15"])
+    assert rc == 2
+
+
+def test_main_star_indent_non_numeric_exit2(hwpx_file):
+    rc = ph.main([str(hwpx_file), "--star-indent", "a,b"])
+    assert rc == 2
+
+
+def test_main_all_does_not_include_sender_size_or_star_indent(hwpx_file, capsys):
+    rc = ph.main([str(hwpx_file), "--all"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = __import__("json").loads(out)
+    assert "sender_size" not in payload
+    assert "star_indent" not in payload
+    assert "center_cells" in payload   # 기능 1은 spacing 묶음으로 --all에 포함됨
+    assert "title_box" in payload      # 기능 3도 spacing 묶음으로 --all에 포함됨
+
+
+def test_main_all_plus_sender_size_combined(hwpx_file, capsys):
+    rc = ph.main([str(hwpx_file), "--all", "--sender-size", "13"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = __import__("json").loads(out)
+    assert payload["sender_size"]["height"] == 1300
+    assert "center_cells" in payload
