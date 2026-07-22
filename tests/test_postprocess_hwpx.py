@@ -299,3 +299,8 @@ def test_main_nothing_to_do_exit1(tmp_path, capsys):
 def test_main_missing_file_exit2(capsys):
     rc = ph.main(["/nonexistent/path/x.hwpx", "--all"])
     assert rc == 2
+
+
+def test_yo_to_star_transition_inferred():
+    from postprocess_hwpx import transition_for
+    assert transition_for("yo", "star") == ("yo_to_star", 300)

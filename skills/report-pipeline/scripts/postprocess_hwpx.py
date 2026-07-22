@@ -40,6 +40,7 @@ TRANSITIONS = {
     ("dae", "yo"): ("dae_to_yo", 600),
     ("yo", "dash"): ("yo_to_dash", 600),
     ("dash", "star"): ("dash_to_star", 300),
+    ("yo", "star"): ("yo_to_star", 300),        # 양식 미실측 전환 — dash→star 3pt 유추 적용
     ("star", "caption"): ("star_to_caption", 1000),
 }
 BLOCK_BOUNDARY_HEIGHT = 1500  # 직전 블록 끝 → 새 □ (일반 빈줄)
