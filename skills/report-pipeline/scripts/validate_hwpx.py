@@ -1,5 +1,5 @@
 """hwpx 구조 검증 + md↔되읽기 왕복 대조 (spec §6-4, AI 티 3중장치-③). stdlib-only."""
-import sys, json, re, zipfile, xml.etree.ElementTree as ET
+import sys, json, re, zipfile, pathlib, xml.etree.ElementTree as ET
 
 NUM = re.compile(r"\d+(?:[.,]\d+)*")
 # 개조식 항목 선두 합법 기호 (lint_md_profile.LEAD와 동일 어휘) — 잔재 검사 전에 벗겨낸다.
@@ -97,7 +97,37 @@ def compare_texts(src, rt):
             issues.append({"rule": "markdown-leftover", "line": i, "text": line.strip()[:80]})
     return issues
 
-USAGE = "usage: validate_hwpx.py structural <path.hwpx> | validate_hwpx.py compare <src.md> <rt.md>"
+def _is_signal_number(normed):
+    """연도 표기('25 등) 같은 1~2자리 정수는 노이즈로 제외 — 소수 또는 3자리 이상 정수만 신호로 본다."""
+    if "." in normed:
+        return True
+    return len(normed) >= 3
+
+def _extract_number_set(text):
+    normed = (normalize_num(n) for n in NUM.findall(text))
+    return {n for n in normed if _is_signal_number(n)}
+
+def numbers_check(draft_text, research_dir):
+    """경량 팩트체크: 초안 수치가 research_dir 어딘가(.md/.txt/.json/.jsonl)에 근거를 갖는지
+    정규화 대조로 결정론 판정한다(spec 경량 팩트체크). 근거 없는 수치만 반환."""
+    draft_nums = _extract_number_set(draft_text)
+    research_nums = set()
+    rdir = pathlib.Path(research_dir)
+    if rdir.is_dir():
+        for ext in ("*.md", "*.txt", "*.json", "*.jsonl"):
+            for f in rdir.rglob(ext):
+                try:
+                    research_nums |= _extract_number_set(f.read_text(encoding="utf-8"))
+                except OSError:
+                    continue
+    unsourced = draft_nums - research_nums
+    if not unsourced:
+        return []
+    return [{"rule": "numbers-unsourced", "values": sorted(unsourced)}]
+
+USAGE = ("usage: validate_hwpx.py structural <path.hwpx> | "
+         "validate_hwpx.py compare <src.md> <rt.md> | "
+         "validate_hwpx.py numbers <draft.md> <research_dir>")
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else None
@@ -114,6 +144,13 @@ if __name__ == "__main__":
             src = open(sys.argv[2], encoding="utf-8").read()
             rt = open(sys.argv[3], encoding="utf-8").read()
             issues = compare_texts(src, rt)
+            print(json.dumps({"issues": issues}, ensure_ascii=False, indent=1))
+            sys.exit(1 if issues else 0)
+        elif mode == "numbers":
+            if len(sys.argv) < 4:
+                raise IndexError
+            draft = open(sys.argv[2], encoding="utf-8").read()
+            issues = numbers_check(draft, sys.argv[3])
             print(json.dumps({"issues": issues}, ensure_ascii=False, indent=1))
             sys.exit(1 if issues else 0)
         else:

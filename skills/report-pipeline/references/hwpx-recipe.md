@@ -75,7 +75,7 @@ mcp__kordoc__generate_document(
 
 ```
 python3 skills/report-pipeline/scripts/check_image_size.py \
-    research/images/{id}.png --max-w-mm 170 --max-h-mm 90 --dpi 96
+    research/fetched/{주제슬러그}/images/{파일명} --max-w-mm 170 --max-h-mm 90 --dpi 96
 ```
 
 - 출력 JSON: `{"w_mm":..,"h_mm":..,"fits":bool,"scale_to_fit":..}`.
@@ -181,4 +181,5 @@ python3 skills/report-pipeline/scripts/validate_hwpx.py \
 | `prep_report_md.py` | `prep_report_md.py <src> -o <out>` | 정규화 성공, `<out>` 기록 | — (사용 안 함) | `PrepError`(모호한 입력 거부) |
 | `validate_hwpx.py structural` | `validate_hwpx.py structural <path.hwpx>` | 구조 정상(`errors:[]`) | 구조 손상 발견(파일 미존재·zip 손상, `errors` 목록에 담겨 exit 1로 재변환 루프) | 인자 부족 |
 | `validate_hwpx.py compare` | `validate_hwpx.py compare <src.md> <rt.md>` | 전항목 일치(`issues:[]`) | 불일치 발견 | 인자 부족(파일 접근 오류 시도 exit 2) |
+| `validate_hwpx.py numbers` | `validate_hwpx.py numbers <draft.md> <research_dir>` | 초안 수치 전부 근거 있음(`issues:[]`) | 근거 없는 수치 발견(`numbers-unsourced`) | 인자 부족 |
 | `check_image_size.py` | `check_image_size.py <img> [--max-w-mm 170] [--max-h-mm 90] [--dpi 96]` | 규격 이내(`fits:true`) | 규격 초과(`fits:false`) | 포맷 인식 실패 등 예외 |

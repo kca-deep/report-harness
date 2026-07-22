@@ -64,3 +64,19 @@ def test_cli_missing_args_exit2(tmp_path):
     import subprocess, sys as _sys
     r = subprocess.run([_sys.executable, str(pathlib.Path(__file__).resolve().parents[1] / "skills/report-pipeline/scripts/validate_hwpx.py"), "compare"], capture_output=True)
     assert r.returncode == 2
+
+def test_numbers_mode_flags_unsourced(tmp_path):
+    from validate_hwpx import numbers_check
+    draft = "ㅇ 예산 349,850,000원, 참여 137명(23.7%)\n"
+    rdir = tmp_path / "research"; rdir.mkdir()
+    (rdir / "a.md").write_text("계약금액 349850000원 규모")   # 349,850,000 근거 있음(정규화 일치)
+    issues = numbers_check(draft, rdir)
+    vals = {v for i in issues for v in i["values"]}
+    assert "137" in vals and "23.7" in vals          # 근거 없는 수치만 잔존
+    assert not any("349" in v for v in vals)
+
+def test_numbers_mode_clean(tmp_path):
+    from validate_hwpx import numbers_check
+    rdir = tmp_path / "research"; rdir.mkdir()
+    (rdir / "a.jsonl").write_text('{"t":"137명 참여, 비율 23.70%"}')
+    assert numbers_check("ㅇ 137명(23.7%)\n", rdir) == []

@@ -54,7 +54,8 @@ firecrawl, korean-law, opendart, kordoc, WebSearch·WebFetch, Context7, youtube-
 
 - 모드 I: 드래그·지정된 파일을 `research/provided/`에 그대로 복사(원본 불변). hwp·hwpx·
   pdf·docx는 kordoc `parse_document`(표는 `parse_table`)로 파싱해 `{원본명}.md`를 병치한다.
-  md·txt는 파싱을 생략한다.
+  md·txt는 파싱을 생략한다. **모드 I 적재는 이 스킬이 소유한다** — pipeline analyze 단계는
+  이 산출을 재사용하며 재적재하지 않는다.
 - 모드 R: 조사 주제를 상호 독립 단위로 분해하고, 단위마다 `research/fetched/{주제슬러그}/`
   하나를 배정한다. 폴더 이름은 그 조사 단위를 식별하는 짧은 한글/영문 슬러그로 정한다.
 

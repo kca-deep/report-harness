@@ -51,7 +51,8 @@ report-research가 책임진다 — 여기서는 위임 여부만 판단한다.
 1. 제공자료가 새로 지정됐으면 먼저 `research/provided/`에 원본을 복사하고, hwp·hwpx·pdf·docx는
    kordoc `parse_document`(표는 `parse_table`)로 파싱해 `{원본명}.md`를 병치한다. 문서가
    **다수**면 문서 단위로 한 메시지 다중 Agent 병렬 팬아웃(각 Agent는 자기 문서의 파싱·1차
-   요약만 맡고, 서로 다른 출력 파일에만 쓴다 — 병렬 쓰기 충돌 금지).
+   요약만 맡고, 서로 다른 출력 파일에만 쓴다 — 병렬 쓰기 충돌 금지). **research 단계(모드 I)가
+   이미 적재·파싱한 자료는 재적재하지 않는다 — `research/provided/` 존재 여부로 판단한다.**
 2. `research/` 산출물 + 파싱본을 종합해 `05_analysis.md`에 3가지를 정리한다:
    - **논지 후보**: 이 건의 핵심 주장이 될 수 있는 후보 1~3개(각 후보를 뒷받침하는 근거 위치
      함께 명시).
@@ -133,8 +134,9 @@ AskUserQuestion 선택지(**팩트체크 선택지를 이 질문에 합친다** 
 
 1. **전체 승인 + 팩트체크**: 전수 / 경량(기본값) / 생략 중 택1.
    - 전수: 독립 서브에이전트가 §7-2 절차로 전수 검증 → `35_factcheck.md`.
-   - 경량(기본): `validate_hwpx.py`의 `profile_counts`로 초안의 수치·표 셀을 research
-     manifest·파싱 자료와 스크립트 대조(에이전트 0개, 초 단위) — 불일치만 보고.
+   - 경량(기본): `python3 skills/report-pipeline/scripts/validate_hwpx.py numbers
+     {work_dir}/20_draft.md {work_dir}/research` 실행(에이전트 0개, 초 단위) — 근거 없는
+     수치(`numbers-unsourced`)만 보고, 발견 시 해당 수치 출처 확인 후 수정 또는 [추정] 태깅.
    - 생략: 미검증 사실이 남을 수 있음을 인도 시 1줄 고지.
 2. **지정 절 수정**: 절 주소 ID로 지목된 절만 수정.
 3. **방향 전환**: 게이트①로 회귀.
@@ -155,15 +157,20 @@ AskUserQuestion 선택지(**팩트체크 선택지를 이 질문에 합친다** 
 `40_qa.md`. **사용자 게이트 없음** — 자동 검증만.
 
 1. **팩트체크(게이트②에서 선택된 값대로) ∥ 회귀검사(`rules.md` `[export]` 태그 +
-   `md-profile.md`)를 한 메시지 다중 Agent로 동시 스폰**한다. 팩트체크가 전수로 선택됐는데
+   `md-profile.md`)를 한 메시지 다중 Agent로 동시 스폰**한다. 전수는 독립 서브에이전트가
+   §7-2 절차로 검증하고, 경량은 `python3 skills/report-pipeline/scripts/validate_hwpx.py
+   numbers {work_dir}/20_draft.md {work_dir}/research`를 실행해 근거 없는 수치
+   (`numbers-unsourced`)만 보고, 발견 시 해당 수치 출처 확인 후 수정 또는 [추정] 태깅한다
+   (에이전트 스폰 불필요). 생략이면 이 항목은 건너뛴다. 팩트체크가 전수로 선택됐는데
    불합격 항목이 나오면 수정 후 게이트②를 간이 재확인한다(사실이 바뀌면 사용자가 다시 봐야
    한다) — 이 경우에만 사용자 개입이 생긴다.
-2. 둘 다 통과하면 `skills/report-pipeline/references/hwpx-recipe.md` 절차를 그대로 실행:
-   prep 정규화(`prep_report_md.py`, exit 2면 사유·줄 번호 보고 후 20_draft.md 수정부터
-   재시도) → kordoc `generate_document` 변환(도식 마커·이미지 마커 치환 포함) →
-   `validate_hwpx.py structural` → 왕복 되읽기 → `validate_hwpx.py compare` — 불일치는 최대
-   2회 재변환 루프, 그래도 잔존하면 목록을 사용자에게 명시 보고하고 `20_draft.md`(SSOT)를
-   그대로 인도한다.
+2. 둘 다 통과하면 `skills/report-pipeline/references/hwpx-recipe.md` recipe 절차(생성→이미지
+   규격판정·주입→검증) 그대로 실행: prep 정규화(`prep_report_md.py`, exit 2면 사유·줄 번호
+   보고 후 20_draft.md 수정부터 재시도) → kordoc `generate_document` 변환(도식 마커 치환 포함)
+   → 이미지 마커는 생성 후 별도 단계(recipe §3)로 `check_image_size.py` 규격판정 →
+   통과분만 `patch_document`로 주입 → `validate_hwpx.py structural` → 왕복 되읽기 →
+   `validate_hwpx.py compare` — 불일치는 최대 2회 재변환 루프, 그래도 잔존하면 목록을
+   사용자에게 명시 보고하고 `20_draft.md`(SSOT)를 그대로 인도한다.
 3. **인도**: `final/{제목}.hwpx`를 파일 첨부로 전송(SendUserFile류)한다. 미검증 사실(팩트체크
    생략/경량 선택 시)·잔존 QA 이슈가 있으면 **1줄로만** 고지한다 — 장황한 나열 금지.
 4. **시간 상한 5분**.
@@ -180,7 +187,8 @@ AskUserQuestion 선택지(**팩트체크 선택지를 이 질문에 합친다** 
 
 `gate`는 이 6값 enum 중 하나만 쓴다. `rules.md`의 `[research]`/`[analyze]`/`[draft]`/`[export]`
 같은 **단계 태그는 rules.md 항목 표기 전용**이며 `feedback` 문자열 안에 중복 삽입하지 않는다 —
-두 체계를 섞지 않는다.
+두 체계를 섞지 않는다. **게이트①(아웃라인) 피드백은 `gate:"outline"`, 게이트②(초안)는
+`gate:"draft"`로 배정한다** — 같은 ③draft 단계 안이라도 두 게이트는 서로 다른 enum 값을 쓴다.
 
 **즉석 승격**: 같은 세션·같은 건 안에서 **동일 유형이 2회 이상** 관찰되면(예: 게이트②에서 같은
 지적이 두 번 나옴) 회고까지 기다리지 않고 그 자리에서 승격을 제안한다 — 선택지형으로 묻고,
@@ -225,6 +233,6 @@ AskUserQuestion 선택지(**팩트체크 선택지를 이 질문에 합친다** 
 - `scripts/lint_md_profile.py <md>` — 결정론 린트. JSON 출력, exit 0(통과)/1(위반).
 - `scripts/prep_report_md.py <src> -o <out>` — 변환 전 정규화. exit 0(성공)/2(모호한 입력
   거부).
-- `scripts/validate_hwpx.py structural|compare` — 구조 검증/왕복 대조. 시그니처는
-  `hwpx-recipe.md` 부록 표 참조(중복 서술 안 함).
+- `scripts/validate_hwpx.py structural|compare|numbers` — 구조 검증/왕복 대조/경량 팩트체크.
+  시그니처는 `hwpx-recipe.md` 부록 표 참조(중복 서술 안 함).
 - `scripts/check_image_size.py <img>` — 이미지 규격 판정. exit 0(이내)/1(초과)/2(오류).
