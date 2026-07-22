@@ -311,3 +311,21 @@ def test_yo_to_yo_and_dash_to_yo_transitions():
     from postprocess_hwpx import transition_for
     assert transition_for("yo", "yo") == ("yo_to_yo", 600)
     assert transition_for("dash", "yo") == ("dash_to_yo", 600)
+
+
+def test_zero_margins_removes_parapr_prev(tmp_path):
+    # 콘텐츠 문단이 참조하는 paraPr의 prev/next 여백이 spacing 처리 시 0으로
+    header = HEADER_XML.replace(
+        '<hc:prev value="0" unit="HWPUNIT"/>',
+        '<hc:prev value="3000" unit="HWPUNIT"/>')
+    p = tmp_path / "zm.hwpx"
+    build_hwpx(str(p), header_xml=header)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["zero_margins"]["count"] == 1
+    assert summary["zero_margins"]["zeroed"][0]["old"]["prev"] == "3000"
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = z.read("Contents/header.xml").decode()
+    assert 'value="3000"' not in hdr
+    # 실효 간격 리포트: □→ㅇ = 스페이서 6pt + prev 0
+    gaps = {g["between"]: g["gap_pt"] for g in summary["effective_gaps"]}
+    assert gaps.get("dae→yo") == 6.0

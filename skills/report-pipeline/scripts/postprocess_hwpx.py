@@ -275,6 +275,76 @@ def apply_spacing(header_root, section_roots):
             "modified": sum(1 for e in events if e["type"] == "modify")}
 
 
+CONTENT_KINDS = {"sending", "dae", "yo", "dash", "star", "cham", "caption", "table", "other"}
+
+
+def apply_zero_margins(header_root, section_roots):
+    """본문 최상위 콘텐츠 문단이 참조하는 paraPr의 위/아래 여백(prev/next)을 0으로.
+    원본 양식 실측: 문단 여백 전부 0, 간격은 스페이서 문단만 담당 — kordoc preset이 넣는
+    큰 위 여백(□ 30pt·ㅇ 20pt·대시 12pt)과 스페이서의 이중 간격을 제거한다."""
+    p_tag = qn("hp", "p")
+    used = set()
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag == p_tag and classify(child) in CONTENT_KINDS:
+                pid = child.get("paraPrIDRef")
+                if pid is not None:
+                    used.add(pid)
+    zeroed = []
+    for para_pr in header_root.iter(qn("hh", "paraPr")):
+        if para_pr.get("id") not in used:
+            continue
+        margin = para_pr.find(qn("hh", "margin"))
+        if margin is None:
+            continue
+        changed = {}
+        for name in ("prev", "next"):
+            el = margin.find(qn("hc", name))
+            if el is not None and el.get("value") not in (None, "0"):
+                changed[name] = el.get("value")
+                el.set("value", "0")
+        if changed:
+            zeroed.append({"paraPr": para_pr.get("id"), "old": changed})
+    return {"zeroed": zeroed, "count": len(zeroed)}
+
+
+def effective_gaps(header_root, section_roots):
+    """인접 콘텐츠 문단 쌍의 실효 간격(pt) = 사이 스페이서/빈 문단 charPr 높이 합
+    + 다음 문단 paraPr.prev 여백. 검증 리포트용."""
+    heights = {c.get("id"): int(c.get("height", "0")) for c in header_root.iter(qn("hh", "charPr"))}
+    prevs = {}
+    for para_pr in header_root.iter(qn("hh", "paraPr")):
+        el = para_pr.find(qn("hh", "margin") + "/" + qn("hc", "prev")) if False else None
+        margin = para_pr.find(qn("hh", "margin"))
+        v = 0
+        if margin is not None:
+            pe = margin.find(qn("hc", "prev"))
+            if pe is not None:
+                v = int(pe.get("value", "0"))
+        prevs[para_pr.get("id")] = v
+    p_tag = qn("hp", "p")
+    gaps = []
+    for sec_root in section_roots:
+        pending = 0
+        prev_label = None
+        for child in sec_root:
+            if child.tag != p_tag:
+                continue
+            kind = classify(child)
+            if kind == "empty":
+                run = child.find(qn("hp", "run"))
+                cid = run.get("charPrIDRef") if run is not None else None
+                pending += heights.get(cid, 0)
+                continue
+            if kind in CONTENT_KINDS:
+                if prev_label is not None:
+                    total = pending + prevs.get(child.get("paraPrIDRef"), 0)
+                    gaps.append({"between": f"{prev_label}→{kind}", "gap_pt": total / 100})
+                prev_label = kind
+                pending = 0
+    return gaps
+
+
 # ---------------------------------------------------------------------------
 # zip 입출력
 # ---------------------------------------------------------------------------
@@ -300,6 +370,8 @@ def process_file(path, star=False, spacing=False):
     any_change = False
     any_target_found = False
 
+    zero = spacing  # 스페이서 방식은 여백 0화와 한 몸 (원본 양식 정합)
+
     if star:
         r = apply_star_footnote(header_root, list(section_roots.values()))
         summary["star_footnote"] = r
@@ -315,6 +387,14 @@ def process_file(path, star=False, spacing=False):
         if r["events"]:
             any_target_found = True
             any_change = True
+
+    if zero:
+        zr = apply_zero_margins(header_root, list(section_roots.values()))
+        summary["zero_margins"] = zr
+        if zr["count"] > 0:
+            any_target_found = True
+            any_change = True
+        summary["effective_gaps"] = effective_gaps(header_root, list(section_roots.values()))
 
     data["Contents/header.xml"] = serialize_xml(header_root)
     for name, root in section_roots.items():
