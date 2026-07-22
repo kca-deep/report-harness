@@ -404,21 +404,58 @@ def ensure_borderless_fill(header_root):
     return new_id
 
 
+def ensure_borderless_variant(header_root, base_id, cache):
+    """base_id borderFill의 배경(fillBrush·그라데이션)은 보존하고 4변 테두리만
+    NONE으로 바꾼 변형 id를 반환한다 — hwpx는 테두리·배경이 borderFill 한 엔티티라
+    통째 교체 시 배경이 소실되므로, 원본별 무테두리 변형을 복제 생성한다."""
+    if base_id in cache:
+        return cache[base_id]
+    borderfills = header_root.find(f".//{qn('hh', 'borderFills')}")
+    base = None
+    for bf in borderfills.findall(qn("hh", "borderFill")):
+        if bf.get("id") == base_id:
+            base = bf
+            break
+    if base is None:
+        cache[base_id] = base_id
+        return base_id
+    if all((el := base.find(qn("hh", t))) is not None and el.get("type") == "NONE"
+           for t in BORDER_TAGS):
+        cache[base_id] = base_id
+        return base_id
+    new_bf = copy.deepcopy(base)
+    max_id = max(int(bf.get("id")) for bf in borderfills.findall(qn("hh", "borderFill")))
+    new_id = str(max_id + 1)
+    new_bf.set("id", new_id)
+    for t in BORDER_TAGS:
+        el = new_bf.find(qn("hh", t))
+        if el is not None:
+            el.set("type", "NONE")
+    borderfills.append(new_bf)
+    borderfills.set("itemCnt", str(int(borderfills.get("itemCnt", "0")) + 1))
+    cache[base_id] = new_id
+    return new_id
+
+
 def apply_title_box_borderless(header_root, section_roots):
-    """제목 박스(첫 □ 이전 표)의 hp:tbl·hp:tc 등 borderFillIDRef 참조를
-    무테두리 borderFill로 교체한다."""
+    """제목 박스(첫 □ 이전 표)의 hp:tbl·hp:tc 등 borderFillIDRef를 '원본 배경 보존 +
+    테두리만 NONE' 변형으로 교체한다(그라데이션 등 fillBrush 유지)."""
     title_tables = [tbl for tbl, is_title in _iter_content_tables(section_roots) if is_title]
     if not title_tables:
         return {"found": False, "fills_replaced": 0}
-    fill_id = ensure_borderless_fill(header_root)
+    cache = {}
     replaced = 0
     for tbl in title_tables:
         for el in tbl.iter():
             ref = el.get("borderFillIDRef")
-            if ref is not None and ref != fill_id:
-                el.set("borderFillIDRef", fill_id)
+            if ref is None:
+                continue
+            new_ref = ensure_borderless_variant(header_root, ref, cache)
+            if new_ref != ref:
+                el.set("borderFillIDRef", new_ref)
                 replaced += 1
-    return {"found": True, "fills_replaced": replaced}
+    return {"found": True, "fills_replaced": replaced,
+            "variants": {k: v for k, v in cache.items() if k != v}}
 
 
 def ensure_charpr_sized(header_root, base_id, height, cache):

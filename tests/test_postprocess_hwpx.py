@@ -449,7 +449,10 @@ def test_title_box_borderless_replaces_refs(tmp_path):
         sec = z.read("Contents/section0.xml").decode()
     i = sec.find("제목텍스트")
     seg = sec[max(0, i - 400):i]
-    assert 'borderFillIDRef="2"' in seg  # 무테두리 fill(id=2, 헤더 fixture 기존 등록분) 재사용
+    # 원본(id=3, SOLID) 참조가 무테두리 변형으로 교체됨 — 배경 보존형 의미론('26.7.22 개정)
+    assert 'borderFillIDRef="3"' not in seg
+    new_id = summary["title_box"]["variants"]["3"]
+    assert f'borderFillIDRef="{new_id}"' in seg
 
 
 def test_title_box_borderless_creates_fill_when_missing(tmp_path):
@@ -643,3 +646,44 @@ def test_main_all_plus_sender_size_combined(hwpx_file, capsys):
     payload = __import__("json").loads(out)
     assert payload["sender_size"]["height"] == 1300
     assert "center_cells" in payload
+
+
+def test_title_box_keeps_gradient_fill(tmp_path):
+    # 그라데이션 배경 + SOLID 테두리 borderFill을 참조하는 제목 박스 →
+    # 테두리만 NONE, fillBrush(gradation) 보존된 변형으로 교체돼야 한다
+    header = HEADER_XML.replace(
+        "</hh:borderFills>",
+        '''<hh:borderFill id="7" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0">
+      <hh:slash type="NONE" Crooked="0" isCounter="0"/>
+      <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
+      <hh:leftBorder type="SOLID" width="0.12 mm" color="#000000"/>
+      <hh:rightBorder type="SOLID" width="0.12 mm" color="#000000"/>
+      <hh:topBorder type="SOLID" width="0.12 mm" color="#000000"/>
+      <hh:bottomBorder type="SOLID" width="0.12 mm" color="#000000"/>
+      <hc:fillBrush><hc:gradation type="LINEAR" angle="90"><hc:color value="#FFFFFF"/><hc:color value="#0066CC"/></hc:gradation></hc:fillBrush>
+    </hh:borderFill></hh:borderFills>''')
+    section = '''<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:tbl id="1" rowCnt="1" colCnt="1" borderFillIDRef="7"><hp:tr><hp:tc borderFillIDRef="7"><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>제목</hp:t></hp:run></hp:p></hp:subList></hp:tc></hp:tr></hp:tbl></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 절</hp:t></hp:run></hp:p>
+</hs:sec>
+'''
+    p = tmp_path / "grad.hwpx"
+    build_hwpx(str(p), header_xml=header, section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["title_box"]["found"] is True
+    assert summary["title_box"]["fills_replaced"] == 2
+    import xml.etree.ElementTree as _ET
+    with zipfile.ZipFile(str(p)) as z:
+        hdr_root = _ET.fromstring(z.read("Contents/header.xml"))
+        sec_txt = z.read("Contents/section0.xml").decode()
+    new_id = summary["title_box"]["variants"]["7"]
+    target = None
+    for bf in hdr_root.iter(ph.qn("hh", "borderFill")):
+        if bf.get("id") == new_id:
+            target = bf
+    assert target is not None
+    for tname in ("leftBorder", "rightBorder", "topBorder", "bottomBorder"):
+        assert target.find(ph.qn("hh", tname)).get("type") == "NONE"
+    assert target.find(ph.qn("hc", "fillBrush")) is not None  # 그라데이션 보존
+    assert f'borderFillIDRef="{new_id}"' in sec_txt
