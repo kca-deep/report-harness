@@ -38,6 +38,8 @@ YO_CHARS = ("ㅇ", "○")
 TRANSITIONS = {
     ("sending", "dae"): ("sending_to_dae", 800),
     ("dae", "yo"): ("dae_to_yo", 600),
+    ("yo", "yo"): ("yo_to_yo", 600),            # 연속 ㅇ 문단 사이 (사용자 확정)
+    ("dash", "yo"): ("dash_to_yo", 600),        # 하위 대시에서 다음 ㅇ 복귀
     ("yo", "dash"): ("yo_to_dash", 600),
     ("dash", "star"): ("dash_to_star", 300),
     ("yo", "star"): ("yo_to_star", 300),        # 양식 미실측 전환 — dash→star 3pt 유추 적용

@@ -304,3 +304,9 @@ def test_main_missing_file_exit2(capsys):
 def test_yo_to_star_transition_inferred():
     from postprocess_hwpx import transition_for
     assert transition_for("yo", "star") == ("yo_to_star", 300)
+
+
+def test_yo_to_yo_and_dash_to_yo_transitions():
+    from postprocess_hwpx import transition_for
+    assert transition_for("yo", "yo") == ("yo_to_yo", 600)
+    assert transition_for("dash", "yo") == ("dash_to_yo", 600)
