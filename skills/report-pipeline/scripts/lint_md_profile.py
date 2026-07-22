@@ -10,8 +10,8 @@ NON_BOLD = re.compile(r"(?<!\*)\*(?!\*)[^*\n]+(?<!\*)\*(?!\*)|~~[^~\n]+~~")
 TRIPLE_STAR = re.compile(r"\*{3,}")
 # 실제 HTML 태그명 화이트리스트만 검출 — <AI 활용 방안> 같은 꺾쇠 라벨은 코퍼스 관례상 통과
 HTML = re.compile(
-    r"(?i)</?(br|p|div|span|table|thead|tbody|tr|td|th|img|b|i|u|em|strong|"
-    r"hr|ul|ol|li|a|sub|sup|font|center|h[1-6])\b[^>]*>"
+    r"(?i)</?(br|div|span|table|thead|tbody|tr|td|th|img|em|strong|"
+    r"hr|ul|ol|li|sub|sup|font|center|h[1-6])\b[^>]*>"
 )
 
 def lint_text(text):
@@ -30,7 +30,8 @@ def lint_text(text):
         stripped = line.strip()
         # 문장 중간(항목 선두가 아닌 위치)의 □ 검출.
         # ※는 인라인 후행 참조가 코퍼스 합법 관례이므로 제외, ㅇ은 오탐 위험으로 이번 범위 제외.
-        if "□" in line and not stripped.startswith("□"):
+        # 선두 □가 합법인 줄에서도 같은 줄의 두 번째 □는 검출.
+        if stripped.count("□") > (1 if stripped.startswith("□") else 0):
             out.append({"line": i, "rule": "misplaced-marker", "text": stripped[:80]})
         if stripped.startswith("ㅇ") or stripped.startswith("○") or stripped.startswith("□"):
             bullet_run = 0

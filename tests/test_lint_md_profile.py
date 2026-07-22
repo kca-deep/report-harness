@@ -72,3 +72,10 @@ def test_midtext_box_symbol_detected():    # 문장 중간 □ 검출
 
 def test_inline_trailing_note_allowed():   # ※ 인라인 후행 참조는 코퍼스 합법 패턴
     assert lint_text("ㅇ 측정 3원칙 적용 ※ 등급별 산식은 붙임 2\n") == []
+
+def test_grade_label_not_html():           # <A 등급> 등 단일문자+공백 라벨은 HTML 아님
+    for s in ["ㅇ <A 등급> 사업 검토\n", "ㅇ <B 안> 채택\n", "ㅇ <I 유형> 분류\n", "ㅇ <P 형> 지정\n"]:
+        assert "html-tag" not in rules(lint_text(s))
+
+def test_second_box_on_valid_line_detected():  # 선두 □ 합법 + 같은 줄 두 번째 □ 검출
+    assert "misplaced-marker" in rules(lint_text("□ 첫 항목: 세부는 별도 □ 서식 참조\n"))
