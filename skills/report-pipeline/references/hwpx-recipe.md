@@ -61,8 +61,10 @@ mcp__kordoc__extract_profile(
 **제목(첫 줄)은 `# 제목` h1로 전달**(평문 첫 줄은 제목으로 인식되지 않아 제목 박스·20pt가
 적용되지 않는다 — R010).
 리터럴 기호를 그대로 넣으면 하위 대시가 상위 부호로 평탄화된다(왕복 compare가 검출하는 유형).
-※·＊ 라인·표·캡션은 그대로 둔다. 이 변환본은 `43_convert_input.md`로 저장한다(40_prepared는
-compare 기준으로 불변 유지).
+※·＊ 라인·표·캡션은 그대로 둔다. **발신 줄은 `<right>< '연. 월. 일.(요일), 본부 팀 ></right>`로
+래핑**해 전달한다(R012 — kordoc `generate_document`의 우측정렬 출처행 문법. 미래핑 시 좌측/양쪽
+정렬로 떨어져 양식과 어긋난다. 근거: 양식 바이너리 실측, 20260722건). 이 변환본은
+`43_convert_input.md`로 저장한다(40_prepared는 compare 기준으로 불변 유지).
 
 **KCA 프로파일 파라미터 (R008 — 필수 전달, format-profile.kca.md §2 매핑)**:
 
@@ -92,9 +94,8 @@ mcp__kordoc__generate_document(
 - `template_hwpx` 미설정 시 `profile_path`를 생략한다 — 단 위 fonts·sizes 등 KCA 프로파일
   파라미터는 **profile_path와 무관하게 항상 전달**한다(R008).
 - **＊ 각주 후처리 (R011)**: kordoc은 ※ 시작 문단만 참고 스타일로 인식하고 전각 ＊는 본문
-  스타일로 남는다 — 생성 직후 section0.xml에서 ＊ 시작 문단의 run `charPrIDRef`를 ※와 동일한
-  참고 charPr(id는 header.xml에서 height=1300·fontRef=맑은고딕으로 탐색)로 치환하는 zip 패치를
-  수행하고 structural을 재실행한다.
+  스타일로 남는다 — §3.5 `postprocess_hwpx.py --star-footnote`(또는 `--all`)로 일괄 치환한다
+  (예전에는 이 치환을 수동 zip 패치로 매번 다시 짰다 — 이제는 스크립트 1회 호출로 대체).
 - **스타일 사용 검증 (R010 검증부)**: 폰트 검증은 선언(fontface·charPr) 확인으로 끝내지 않는다 —
   대표 문단(제목·□·ㅇ·대시·※·＊·표 헤더)별로 section0.xml의 run `charPrIDRef`가 의도한
   charPr(폰트·크기)를 실제 참조하는지 확인한다. kordoc 렌더러는 generate 산출물 미리보기를
@@ -132,7 +133,32 @@ mcp__kordoc__patch_document(
 
 - `patch_document`는 블록 추가/삭제를 지원하지 않는다 — 이미지 마커 문단이 이미 존재하는
   자리에서만 치환이 성립한다(§7-1 배치 승인이 게이트①에서 이미 확정돼 있어야 하는 이유).
-- 이미지가 없으면 이 단계는 생략하고 §4로 진행.
+- 이미지가 없으면 이 단계는 생략하고 §3.5로 진행.
+
+## 3.5. 후처리 — `postprocess_hwpx.py --all`
+
+이미지 주입까지 끝난 hwpx를 양식 정합으로 후처리한다. §4 구조 검증 **이전**에 실행한다(스크립트가
+직접 zip을 재작성하므로, 재작성 결과를 검증 대상으로 삼아야 한다).
+
+```
+python3 skills/report-pipeline/scripts/postprocess_hwpx.py \
+    {work_dir}/final/{제목}.hwpx --all
+```
+
+- **`--star-footnote` (R011)**: ＊ 시작 문단의 run `charPrIDRef`를 참고 스타일(header.xml에서
+  height=1300·fontRef=맑은고딕 계열 탐색)로 치환한다. kordoc은 ※만 참고 스타일로 인식하고
+  전각 ＊는 본문 스타일로 남는 결함의 스크립트화 — 기존 수동 zip 패치를 대체한다.
+- **`--spacing` (R013)**: 계층 전환 지점(발신줄→□·□→ㅇ·ㅇ→-·-→＊·＊→표캡션·블록 구분)의
+  간격을 원본 KCA 양식 실측값(스페이서 문단 방식 — 문단모양 자체 간격이 아니라 글자크기를
+  줄인 빈 문단)으로 재현한다. 전환 지점에 이미 빈 문단이 있으면 그 charPr 높이를 치환하고,
+  없으면(= kordoc `generate_document` 산출물의 표준 상태) 새 스페이서 문단을 삽입한다. 확정값은
+  format-profile.kca.md §7 참조.
+- **`--all`**은 두 기능을 모두 적용하고 zip을 1회만 재작성한다(항목 순서·mimetype 보존).
+  결과 요약(치환 건수·삽입/치환 스페이서 이벤트 목록)을 JSON으로 stdout에 낸다.
+- exit 0: 변경 적용 완료. exit 1: 대상 없음(＊ 문단·전환 지점 모두 미발견 — 잘못된 파일을
+  가리켰을 가능성, 원인 확인). exit 2: 인자·파일·zip/xml 구조 오류.
+- 이 단계 이후 §4 구조 검증(`validate_hwpx.py structural`)을 재실행해 zip이 여전히 정상인지
+  확인한다.
 
 ## 4. 검증 — 구조 검증 + 왕복 교차대조
 
@@ -219,3 +245,4 @@ python3 skills/report-pipeline/scripts/validate_hwpx.py \
 | `validate_hwpx.py compare` | `validate_hwpx.py compare <src.md> <rt.md>` | 전항목 일치(`issues:[]`) | 불일치 발견 | 인자 부족(파일 접근 오류 시도 exit 2) |
 | `validate_hwpx.py numbers` | `validate_hwpx.py numbers <draft.md> <research_dir>` | 초안 수치 전부 근거 있음(`issues:[]`) | 근거 없는 수치 발견(`numbers-unsourced`) | 인자 부족 |
 | `check_image_size.py` | `check_image_size.py <img> [--max-w-mm 170] [--max-h-mm 90] [--dpi 96]` | 규격 이내(`fits:true`) | 규격 초과(`fits:false`) | 포맷 인식 실패 등 예외 |
+| `postprocess_hwpx.py` | `postprocess_hwpx.py <file.hwpx> [--star-footnote] [--spacing] [--all]` | 변경 적용 완료(요약 JSON) | 대상 없음(＊ 문단·전환 지점 모두 미발견) | 인자/파일/zip·xml 구조 오류(참고 charPr 미발견 포함) |
