@@ -19,3 +19,19 @@ def test_pii_scan_detects(tmp_path):
 def test_pii_scan_clean(tmp_path):
     (tmp_path / "a.md").write_text("연락처는 마스킹됨 061-***-****")
     assert scan_dir(tmp_path) == []
+
+def test_pii_scan_no_hyphen_phone(tmp_path):
+    (tmp_path / "a.md").write_text("연락처 01012345678 / 010 1234 5678 / 010.1234.5678")
+    kinds = [h["kind"] for h in scan_dir(tmp_path)]
+    assert kinds.count("phone") >= 3
+
+def test_pii_scan_extra_extensions(tmp_path):
+    (tmp_path / "a.csv").write_text("name,phone\n김,061-350-1565")
+    (tmp_path / "b.jsonl").write_text('{"mail":"x@kca.kr"}')
+    (tmp_path / "c.yaml").write_text("tel: 010-1234-5678")
+    kinds = {h["kind"] for h in scan_dir(tmp_path)}
+    assert kinds == {"phone", "email"}
+
+def test_pii_scan_no_false_positive_on_dates(tmp_path):
+    (tmp_path / "a.md").write_text("사업기간 2026.01.13 ~ 2026.12.31, 예산 349,850,000원")
+    assert scan_dir(tmp_path) == []
