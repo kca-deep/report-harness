@@ -458,6 +458,27 @@ def apply_title_box_borderless(header_root, section_roots):
             "variants": {k: v for k, v in cache.items() if k != v}}
 
 
+# KCA 양식 편집용지 여백 (HWPUNIT, 7200/inch): 좌우 20mm·위 10mm·아래 15mm·머리말 15mm·꼬리말 10mm
+PAGE_MARGINS = {"left": "5669", "right": "5669", "top": "2835", "bottom": "4252",
+                "header": "4252", "footer": "2835"}
+
+
+def apply_page_margins(section_roots):
+    """pagePr 여백을 KCA 양식 규격으로 강제한다 (kordoc preset은 위 15mm로 생성 —
+    양식은 위 10mm라 제목표 위에 5mm 초과 여백이 생기는 결함의 후처리, R020)."""
+    changed = 0
+    for sec_root in section_roots:
+        for pagepr in sec_root.iter(qn("hp", "pagePr")):
+            margin = pagepr.find(qn("hp", "margin"))
+            if margin is None:
+                continue
+            for k, v in PAGE_MARGINS.items():
+                if margin.get(k) != v:
+                    margin.set(k, v)
+                    changed += 1
+    return {"attrs_changed": changed}
+
+
 HIERARCHY_SPACES = {"dae": 0, "yo": 1, "dash": 3, "star": 5, "cham": 5}
 
 
@@ -773,6 +794,11 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
         sh = apply_space_hierarchy(header_root, list(section_roots.values()))
         summary["space_hierarchy"] = sh
         if sh["prefixed"] or sh["flattened"]:
+            any_target_found = True
+            any_change = True
+        pm = apply_page_margins(list(section_roots.values()))
+        summary["page_margins"] = pm
+        if pm["attrs_changed"]:
             any_target_found = True
             any_change = True
 

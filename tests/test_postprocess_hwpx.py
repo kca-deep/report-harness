@@ -713,3 +713,19 @@ def test_space_hierarchy_prefix_and_flatten(tmp_path):
     assert "<hp:t> ㅇ 요지</hp:t>" in sec           # 1칸
     assert "<hp:t>   - 상세</hp:t>" in sec          # 3칸
     assert "<hp:t>     ＊ 각주</hp:t>" in sec       # 5칸 (star-footnote 미실행이라 텍스트만 확인)
+
+
+def test_page_margins_forced_to_template(tmp_path):
+    section = '''<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:secPr><hp:pagePr landscape="WIDELY" width="59528" height="84188" gutterType="LEFT_ONLY"><hp:margin header="4251" footer="4251" gutter="0" left="5669" right="5669" top="4252" bottom="4252"/></hp:pagePr></hp:secPr><hp:t> ㅇ 본문</hp:t></hp:run></hp:p>
+</hs:sec>
+'''
+    p = tmp_path / "pm.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["page_margins"]["attrs_changed"] >= 2   # top·footer 교정
+    with zipfile.ZipFile(str(p)) as z:
+        sec_out = z.read("Contents/section0.xml").decode()
+    assert 'top="2835"' in sec_out and 'footer="2835"' in sec_out
+    assert 'header="4252"' in sec_out and 'bottom="4252"' in sec_out
