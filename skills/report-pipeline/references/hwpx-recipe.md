@@ -56,21 +56,41 @@ mcp__kordoc__extract_profile(
 `parse_document`로 추출해 슬롯을 채운 뒤, GFM 표로 재구성해 `40_prepared.md`의 마커 자리에
 병합한다(md-profile의 표 규격 안에서 조립).
 
+**변환 입력 문법 (R007)**: generate_document에는 리터럴 개조식 기호가 아니라 **리스트 깊이
+문법**으로 변환해 전달한다 — `□ X`→`- X`, ` ㅇ X`→`  - X`(2칸), `   - X`→`    - X`(4칸).
+리터럴 기호를 그대로 넣으면 하위 대시가 상위 부호로 평탄화된다(왕복 compare가 검출하는 유형).
+※·＊ 라인·표·캡션은 그대로 둔다. 이 변환본은 `43_convert_input.md`로 저장한다(40_prepared는
+compare 기준으로 불변 유지).
+
+**KCA 프로파일 파라미터 (R008 — 필수 전달, format-profile.kca.md §2 매핑)**:
+
 ```
 mcp__kordoc__generate_document(
-    markdown="{40_prepared.md 전문 — 도식 마커 치환 완료본}",
+    markdown="{43_convert_input.md 전문 — 도식 마커 치환 완료본}",
     output_path="{work_dir}/final/{제목}.hwpx",
     preset="보고서",
-    font="myeongjo",
-    body_pt=15,
+    body_pt=15,                      # ㅇ·- 본문 15pt
+    fonts={"heading": "HY헤드라인M",  # □·제목 계열
+           "body": "휴먼명조",        # ㅇ·- 본문
+           "ref": "맑은고딕",         # ※·＊ 참고
+           "table": "맑은 고딕"},     # 표 셀
+    sizes={"dae": 15,                # □ 15pt
+           "cham": 13,               # ※·＊ 13pt
+           "table": 12,              # 표 12pt
+           "bodyTitle": 20},         # 제목 박스 20pt (HY헤드라인M 20pt)
+    bullet2="ᄋ",                    # 2단 부호 = 양식의 ㅇ(이응)
+    body_title_box=True,             # 제목 표구조(박스) — 양식 제목부 재현
+    line_spacing=160,                # 편집용지 줄간격 160%
     profile_path="{work_dir}/format-profile.json")   # template_hwpx 설정 시에만 전달
 ```
 
 - `preset="보고서"`(1페이지 요약보고서 프리셋), `font="myeongjo"`(휴먼명조 계열),
   `body_pt=15` — spec §6-3 "명조 15pt" 확정값과 동일(해당 프리셋 기본값이기도 하지만 명시
   전달로 회귀를 막는다).
-- `template_hwpx` 미설정 시 `profile_path`를 생략하면 kordoc 보고서 preset 기본 서식이
-  적용된다(format-profile.kca.md가 번들 시드로 이미 반영된 상태).
+- `template_hwpx` 미설정 시 `profile_path`를 생략한다 — 단 위 fonts·sizes 등 KCA 프로파일
+  파라미터는 **profile_path와 무관하게 항상 전달**한다(R008).
+- **붙임(R009)**: 본문에 붙임이 있으면 3열 배너 표(`| 붙임 1 | | 제목 |`, 단수는 `| 붙 임 | | 제목 |`)
+  형식을 md 단계부터 유지해 변환한다 — 배너를 일반 문단으로 풀지 않는다.
 - **kordoc 자체 표기법 경고**(4자리 연도·콜론 붙임 권장 등)는 `style-guide.md`의 기관 관례(`'26.` 축약·` : ` 콜론형)가 우선이므로 **무시하고 진행한다** — 경고이지 오류가 아니다.
 - **2단 불릿 ㅇ(U+3147)을 원문 그대로 유지**하려면 `generate_document`에 `bullet2` 파라미터를 명시한다(미지정 시 ○로 정규화되며 compare의 points 집계는 두 기호를 동일 취급).
 

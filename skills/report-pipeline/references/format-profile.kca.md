@@ -47,3 +47,17 @@
 
 - ㅇ·- 항목의 서술량: **최대 2줄** (사용자 명시 규칙). 2줄 초과 시 하위 계층으로 분리하거나 문장을 나눈다.
 - 상세 수치·빈도 관례는 `style-guide.md`의 코퍼스 분석 결과를 따른다.
+
+## 6. kordoc generate_document 파라미터 매핑 (export 필수 적용 — rules R008)
+
+| 양식 요소 | 양식 값 | kordoc 파라미터 |
+|---|---|---|
+| 제목 (박스) | HY헤드라인M 20pt | `body_title_box=True` + `sizes.bodyTitle=20` (+ fonts.heading) |
+| □ 절 제목 | HY헤드라인M 15pt | `fonts.heading="HY헤드라인M"` + `sizes.dae=15` |
+| ㅇ·- 본문 | 휴먼명조 15pt | `fonts.body="휴먼명조"` + `body_pt=15` |
+| ㅇ 부호 | ㅇ(이응) | `bullet2="ᄋ"` |
+| ※·＊ 참고 | 맑은고딕 13pt | `fonts.ref="맑은고딕"` + `sizes.cham=13` |
+| 표 본문 | 맑은 고딕 12pt | `fonts.table="맑은 고딕"` + `sizes.table=12` |
+| 줄간격 | 160% | `line_spacing=160` |
+| 붙임 배너 | 3열 배너 표 | md 단계부터 `| 붙임 1 | | 제목 |` 표로 작성·유지 (R009) |
+
