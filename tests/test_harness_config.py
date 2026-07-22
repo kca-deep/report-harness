@@ -29,3 +29,10 @@ def test_state_paths_created(tmp_path):
     assert sp["rules"] == tmp_path / "st" / "rules.md"
     assert sp["lessons"] == tmp_path / "st" / "lessons.jsonl"
     assert (tmp_path / "st").is_dir()
+
+def test_explicit_null_falls_back_to_default(tmp_path):
+    p = tmp_path / "c.json"
+    p.write_text('{"knowledge_vault": null, "reports_dir": null}')
+    cfg = hc.load_config(path=p)
+    assert cfg["knowledge_vault"] is None
+    assert cfg["reports_dir"] == pathlib.Path.cwd() / "reports"

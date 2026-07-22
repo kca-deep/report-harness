@@ -9,7 +9,8 @@ def load_config(path=None):
     if path.is_file():
         raw = json.loads(path.read_text(encoding="utf-8"))
     def p(key, default):
-        return pathlib.Path(raw[key]).expanduser() if key in raw else default
+        val = raw.get(key)
+        return pathlib.Path(val).expanduser() if val is not None else default
     return {
         "reports_dir": p("reports_dir", pathlib.Path.cwd() / "reports"),
         "state_dir": p("state_dir", pathlib.Path.home() / ".claude" / "report-harness-state"),
