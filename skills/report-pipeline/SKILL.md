@@ -121,7 +121,7 @@ lint 통과 후, 절 그룹을 나눠 한 메시지 다중 Agent로 동시 실�
 - **스타일 감사**: 독립 서브에이전트(general-purpose)에 `style-guide.md` + `rules.md`
   `[draft]` 태그를 주입해 감사 → 위반 수정.
 - **humanizer**: 서술형 구간(배경 설명·근거 서술 등)에만 적용, 개조식 명사형 종결부는 대상에서
-  제외. 원문 근거는 `~/.claude/skills/humanizer`(플러그인 번들 위치는 배포 형태에 따름).
+  제외. 원문 근거는 플러그인 번들 humanizer 스킬(skills/humanizer).
 
 적용 전후 **diff로 수치·인용이 불변인지 검증**한다 — 불일치가 있으면 해당 절만 롤백 후 재적용.
 

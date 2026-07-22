@@ -18,3 +18,8 @@ def test_pipeline_skill_references_exist():
         assert ref in t, ref
     for f in ["style-guide.md", "md-profile.md", "hwpx-recipe.md", "rules-seed.md"]:
         assert (ROOT / "skills/report-pipeline/references" / f).is_file()
+
+def test_commands_and_bundle():
+    for c in ["report-research", "report-analyze", "report-draft", "report-export"]:
+        assert (ROOT / "commands" / f"{c}.md").is_file()
+    assert (ROOT / "skills/humanizer/SKILL.md").is_file()
