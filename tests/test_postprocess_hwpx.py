@@ -307,11 +307,14 @@ def test_main_all_success_exit0(hwpx_file, capsys):
 def test_main_nothing_to_do_exit1(tmp_path, capsys):
     section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
-  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t> ㅇ 요지1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="3" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t> ㅇ 요지1</hp:t></hp:run></hp:p>
 </hs:sec>
 """
+    header = HEADER_XML.replace(
+        "</hh:paraProperties>",
+        '''<hh:paraPr id="3" tabPrIDRef="0"><hh:align horizontal="JUSTIFY" vertical="BASELINE"/><hh:margin><hc:intent value="-3000" unit="HWPUNIT"/><hc:left value="3000" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin></hh:paraPr></hh:paraProperties>''')
     p = tmp_path / "nothing.hwpx"
-    build_hwpx(str(p), section_xml=section)
+    build_hwpx(str(p), header_xml=header, section_xml=section)
     rc = ph.main([str(p), "--spacing"])
     assert rc == 1
 
@@ -344,7 +347,9 @@ def test_zero_margins_removes_parapr_prev(tmp_path):
     assert summary["zero_margins"]["zeroed"][0]["old"]["prev"] == "3000"
     with zipfile.ZipFile(str(p)) as z:
         hdr = z.read("Contents/header.xml").decode()
-    assert 'value="3000"' not in hdr
+    import re as _re2
+    # prev=3000이 0으로 교정됐는지(내어쓰기 left=3000은 hang 체계의 정당한 값이라 존재 가능)
+    assert not _re2.search(r'<hc:prev value="3000"', hdr)
     # 실효 간격 리포트: □→ㅇ = 스페이서 6pt + prev 0
     gaps = {g["between"]: g["gap_pt"] for g in summary["effective_gaps"]}
     assert gaps.get("dae→yo") == 6.0
@@ -368,7 +373,7 @@ def test_center_tables_and_captions(tmp_path):
     j = sec.find("ㅇ 요지1")
     seg2 = sec[max(0, j - 400):j]
     pid2 = _re.findall(r'paraPrIDRef="(\d+)"', seg2)[-1]
-    assert pid2 == "0"
+    assert pid2 != pid  # 본문 ㅇ은 캡션 센터 paraPr을 공유하지 않음(hang 복제본)
 
 
 # --- ④표-문단 간격 보정 전환 값 -------------------------------------------
@@ -713,6 +718,24 @@ def test_space_hierarchy_prefix_and_flatten(tmp_path):
     assert "<hp:t> ㅇ 요지</hp:t>" in sec           # 1칸
     assert "<hp:t>   - 상세</hp:t>" in sec          # 3칸
     assert "<hp:t>     ＊ 각주</hp:t>" in sec       # 5칸 (star-footnote 미실행이라 텍스트만 확인)
+    # 내어쓰기: ㅇ 문단 paraPr left=3000·intent=-3000 (랩 줄 자동 들여쓰기)
+    import xml.etree.ElementTree as _ET
+    with zipfile.ZipFile(str(p)) as z:
+        hdr_root = _ET.fromstring(z.read("Contents/header.xml"))
+        sec_root = _ET.fromstring(z.read("Contents/section0.xml"))
+    margins = {}
+    for pp in hdr_root.iter(ph.qn("hh", "paraPr")):
+        m = pp.find(ph.qn("hh", "margin"))
+        if m is not None:
+            margins[pp.get("id")] = {tt: (m.find(ph.qn("hc", tt)).get("value") if m.find(ph.qn("hc", tt)) is not None else None) for tt in ("left", "intent")}
+    kinds_seen = {}
+    for para in sec_root.iter(ph.qn("hp", "p")):
+        k = ph.classify(para)
+        if k in ("yo", "dash", "star") and k not in kinds_seen:
+            kinds_seen[k] = margins.get(para.get("paraPrIDRef"), {})
+    assert kinds_seen["yo"] == {"left": "3000", "intent": "-3000"}
+    assert kinds_seen["dash"] == {"left": "3750", "intent": "-3750"}
+    assert kinds_seen["star"] == {"left": "5200", "intent": "-5200"}
 
 
 def test_page_margins_forced_to_template(tmp_path):

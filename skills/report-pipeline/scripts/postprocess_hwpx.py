@@ -480,12 +480,19 @@ def apply_page_margins(section_roots):
 
 
 HIERARCHY_SPACES = {"dae": 0, "yo": 1, "dash": 3, "star": 5, "cham": 5}
+# 줄바꿈 시 둘째 줄 들여쓰기(=본문 시작 위치, HWPUNIT). 첫 줄은 intent=-left로 0에서 시작
+# (리터럴 공백이 마커 위치를 잡고, 랩된 줄은 left 위치에 정렬 — 사용자 확정 '26.7.22)
+# 산출: 공백폭=글자크기/2 — dae 0+□15+공백7.5 / yo 공백7.5+ㅇ15+7.5 / dash 22.5+대시7.5+7.5
+#       star·cham(13pt) 공백 5×6.5+기호13+6.5
+HIERARCHY_HANG = {"dae": 2250, "yo": 3000, "dash": 3750, "star": 5200, "cham": 5200}
 
 
-def ensure_flat_parapr(header_root, base_id, cache):
-    """base paraPr 복제 — left·intent·prev·next 전부 0 (띄어쓰기 계층용, 정렬 등 나머지 보존)."""
-    if base_id in cache:
-        return cache[base_id]
+def ensure_hang_parapr(header_root, base_id, hang, cache):
+    """base paraPr 복제 — left=hang·intent=-hang(첫 줄 0에서 시작, 랩 줄은 hang 위치 정렬),
+    prev·next=0. hang=0이면 전부 0(내어쓰기 불필요 계층)."""
+    key = (base_id, hang)
+    if key in cache:
+        return cache[key]
     paraprops = header_root.find(f".//{qn('hh', 'paraProperties')}")
     base = None
     for pp in paraprops.findall(qn("hh", "paraPr")):
@@ -493,14 +500,15 @@ def ensure_flat_parapr(header_root, base_id, cache):
             base = pp
             break
     if base is None:
-        cache[base_id] = base_id
+        cache[key] = base_id
         return base_id
+    want = {"left": str(hang), "intent": str(-hang), "prev": "0", "next": "0"}
     margin = base.find(qn("hh", "margin"))
     if margin is not None and all(
-        (el := margin.find(qn("hc", t))) is None or el.get("value") == "0"
-        for t in ("left", "intent", "prev", "next")
+        (el := margin.find(qn("hc", t))) is not None and el.get("value") == v
+        for t, v in want.items()
     ):
-        cache[base_id] = base_id
+        cache[key] = base_id
         return base_id
     new_pp = copy.deepcopy(base)
     max_id = max(int(pp.get("id")) for pp in paraprops.findall(qn("hh", "paraPr")))
@@ -508,13 +516,13 @@ def ensure_flat_parapr(header_root, base_id, cache):
     new_pp.set("id", new_id)
     nm = new_pp.find(qn("hh", "margin"))
     if nm is not None:
-        for t in ("left", "intent", "prev", "next"):
+        for t, v in want.items():
             el = nm.find(qn("hc", t))
             if el is not None:
-                el.set("value", "0")
+                el.set("value", v)
     paraprops.append(new_pp)
     paraprops.set("itemCnt", str(len(paraprops.findall(qn("hh", "paraPr")))))
-    cache[base_id] = new_id
+    cache[key] = new_id
     return new_id
 
 
@@ -542,7 +550,8 @@ def apply_space_hierarchy(header_root, section_roots):
                     break
             base_id = child.get("paraPrIDRef")
             if base_id is not None:
-                new_id = ensure_flat_parapr(header_root, base_id, cache)
+                hang = HIERARCHY_HANG.get(kind, 0)
+                new_id = ensure_hang_parapr(header_root, base_id, hang, cache)
                 if new_id != base_id:
                     child.set("paraPrIDRef", new_id)
                     changed["flattened"] += 1
