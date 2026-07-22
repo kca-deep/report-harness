@@ -28,6 +28,10 @@ def lint_text(text):
             bullet_run += 1
             if bullet_run == 6:
                 out.append({"line": i, "rule": "bullet-overflow", "text": stripped[:80]})
+            # 선행 공백이 5칸 이상이면 깊이 초과 (4단 위계 초과)
+            leading_spaces = len(line) - len(line.lstrip())
+            if leading_spaces >= 5:
+                out.append({"line": i, "rule": "depth-exceeded", "text": stripped[:80]})
         body = LEAD.sub("", line, count=1)
         body_nobold = BOLD.sub("", body)
         if NON_BOLD.search(body_nobold):

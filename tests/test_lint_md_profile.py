@@ -34,3 +34,14 @@ def test_bullet_overflow_under_one_yo():
 
 def test_html_tag():
     assert "html-tag" in rules(lint_text("ㅇ 내용 <br> 줄바꿈\n"))
+
+def test_depth_exceeded_on_deep_nesting():
+    text = ("□ 절\n"
+            " ㅇ 요지\n"
+            "   - 상세\n"
+            "      - 5단 중첩 세부\n")
+    assert "depth-exceeded" in rules(lint_text(text))
+
+def test_depth_ok_within_4_levels():
+    text = "□ 절\n ㅇ 요지\n   - 상세\n※ 단서\n＊ 각주\n"
+    assert lint_text(text) == []
