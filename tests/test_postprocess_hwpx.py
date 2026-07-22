@@ -127,7 +127,7 @@ def test_transition_lookup_values():
     assert ph.transition_for("star", "caption") == ("star_to_caption", 1000)
     assert ph.transition_for("yo", "dae") == ("block_boundary", 1500)
     assert ph.transition_for("table", "dae") == ("block_boundary", 1500)
-    assert ph.transition_for("yo", "yo") is None
+    assert ph.transition_for("yo", "yo") == ("yo_to_yo", 600)  # 사용자 확정('26.7.22): 연속 ㅇ 6pt
     assert ph.transition_for("dash", "dash") is None
 
 
@@ -218,7 +218,7 @@ def test_spacing_inserts_and_modifies(hwpx_file):
     assert height_values.count("600") == 1
 
 
-def test_spacing_no_transition_between_same_level_items(tmp_path):
+def test_spacing_yo_to_yo_inserts_6pt(tmp_path):
     section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
   <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 요지1</hp:t></hp:run></hp:p>
@@ -228,7 +228,8 @@ def test_spacing_no_transition_between_same_level_items(tmp_path):
     p = tmp_path / "same_level.hwpx"
     build_hwpx(str(p), section_xml=section)
     summary = ph.process_file(str(p), star=False, spacing=True)
-    assert summary["spacing"]["events"] == []
+    assert [e["transition"] for e in summary["spacing"]["events"]] == ["yo_to_yo"]
+    assert summary["spacing"]["events"][0]["height"] == 600
     assert summary["target_found"] is False
 
 
