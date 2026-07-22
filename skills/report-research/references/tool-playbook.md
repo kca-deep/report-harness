@@ -23,8 +23,8 @@
 번들하지 않는다 — 사용자 환경에 이미 설치돼 있으면 활용하고, 없으면 표의 마지막 행(`WebSearch`
 → `WebFetch`)으로 강등해도 조사 자체는 계속 진행한다. 도구 부재로 조사를 중단하지 않는다.
 
-대체가 발생하면 SKILL.md §6 종료 훅의 lessons 기록에 `[research]` 태그로 남긴다(예: "korean-law
-미설치 — WebSearch로 법령 원문 검색 대체").
+대체가 발생하면 SKILL.md §6 종료 훅의 lessons 기록에 `gate:"research"`로 남긴다(예: feedback
+"korean-law 미설치 — WebSearch로 법령 원문 검색 대체").
 
 ## 교차검증 원칙
 
