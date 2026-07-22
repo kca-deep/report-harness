@@ -7,10 +7,16 @@ TABLE = re.compile(r"^\s*\|")
 BOLD = re.compile(r"\*\*[^*\n]+\*\*")
 INLINE_BAD = re.compile(r"(?:\s-\s|(?<!\*)\*(?!\*)|`|^#{1,6}\s|\s>\s)")
 NON_BOLD = re.compile(r"(?<!\*)\*(?!\*)[^*\n]+(?<!\*)\*(?!\*)|~~[^~\n]+~~")
-HTML = re.compile(r"</?[a-zA-Z][^>]*>")
+TRIPLE_STAR = re.compile(r"\*{3,}")
+# 실제 HTML 태그명 화이트리스트만 검출 — <AI 활용 방안> 같은 꺾쇠 라벨은 코퍼스 관례상 통과
+HTML = re.compile(
+    r"(?i)</?(br|p|div|span|table|thead|tbody|tr|td|th|img|b|i|u|em|strong|"
+    r"hr|ul|ol|li|a|sub|sup|font|center|h[1-6])\b[^>]*>"
+)
 
 def lint_text(text):
     out, bullet_run = [], 0
+    depth_base = None  # 현재 ㅇ/○/□ 블록에서 첫 대시의 들여쓰기(최상위 기준선)
     for i, line in enumerate(text.splitlines(), 1):
         if not line.strip():
             continue
@@ -22,16 +28,28 @@ def lint_text(text):
         if HTML.search(line):
             out.append({"line": i, "rule": "html-tag", "text": line.strip()[:80]})
         stripped = line.strip()
-        if stripped.startswith("ㅇ") or stripped.startswith("○"):
+        # 문장 중간(항목 선두가 아닌 위치)의 □ 검출.
+        # ※는 인라인 후행 참조가 코퍼스 합법 관례이므로 제외, ㅇ은 오탐 위험으로 이번 범위 제외.
+        if "□" in line and not stripped.startswith("□"):
+            out.append({"line": i, "rule": "misplaced-marker", "text": stripped[:80]})
+        if stripped.startswith("ㅇ") or stripped.startswith("○") or stripped.startswith("□"):
             bullet_run = 0
+            depth_base = None
         elif stripped.startswith("-"):
-            bullet_run += 1
-            if bullet_run == 6:
-                out.append({"line": i, "rule": "bullet-overflow", "text": stripped[:80]})
-            # 선행 공백이 5칸 이상이면 깊이 초과 (4단 위계 초과)
             leading_spaces = len(line) - len(line.lstrip())
-            if leading_spaces >= 5:
+            if depth_base is None:
+                depth_base = leading_spaces
+            if leading_spaces > depth_base:
+                # 대시는 중첩 불가 — 기준선보다 더 들여쓴 대시는 깊이 초과 (4단은 ※/＊)
                 out.append({"line": i, "rule": "depth-exceeded", "text": stripped[:80]})
+            else:
+                if leading_spaces < depth_base:
+                    depth_base = leading_spaces
+                bullet_run += 1
+                if bullet_run == 6:
+                    out.append({"line": i, "rule": "bullet-overflow", "text": stripped[:80]})
+        if TRIPLE_STAR.search(line):
+            out.append({"line": i, "rule": "non-bold-markup", "text": stripped[:80]})
         body = LEAD.sub("", line, count=1)
         body_nobold = BOLD.sub("", body)
         if NON_BOLD.search(body_nobold):
