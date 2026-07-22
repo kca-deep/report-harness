@@ -458,6 +458,76 @@ def apply_title_box_borderless(header_root, section_roots):
             "variants": {k: v for k, v in cache.items() if k != v}}
 
 
+HIERARCHY_SPACES = {"dae": 0, "yo": 1, "dash": 3, "star": 5, "cham": 5}
+
+
+def ensure_flat_parapr(header_root, base_id, cache):
+    """base paraPr 복제 — left·intent·prev·next 전부 0 (띄어쓰기 계층용, 정렬 등 나머지 보존)."""
+    if base_id in cache:
+        return cache[base_id]
+    paraprops = header_root.find(f".//{qn('hh', 'paraProperties')}")
+    base = None
+    for pp in paraprops.findall(qn("hh", "paraPr")):
+        if pp.get("id") == base_id:
+            base = pp
+            break
+    if base is None:
+        cache[base_id] = base_id
+        return base_id
+    margin = base.find(qn("hh", "margin"))
+    if margin is not None and all(
+        (el := margin.find(qn("hc", t))) is None or el.get("value") == "0"
+        for t in ("left", "intent", "prev", "next")
+    ):
+        cache[base_id] = base_id
+        return base_id
+    new_pp = copy.deepcopy(base)
+    max_id = max(int(pp.get("id")) for pp in paraprops.findall(qn("hh", "paraPr")))
+    new_id = str(max_id + 1)
+    new_pp.set("id", new_id)
+    nm = new_pp.find(qn("hh", "margin"))
+    if nm is not None:
+        for t in ("left", "intent", "prev", "next"):
+            el = nm.find(qn("hc", t))
+            if el is not None:
+                el.set("value", "0")
+    paraprops.append(new_pp)
+    paraprops.set("itemCnt", str(len(paraprops.findall(qn("hh", "paraPr")))))
+    cache[base_id] = new_id
+    return new_id
+
+
+def apply_space_hierarchy(header_root, section_roots):
+    """계층 표현을 paraPr 들여쓰기 대신 리터럴 띄어쓰기로 전환한다(사용자 확정 '26.7.22):
+    □ 0칸 / ㅇ 1칸 / 대시 3칸 / ＊·※ 5칸. 해당 문단 paraPr의 left·intent는 0화(복제 배정)."""
+    p_tag = qn("hp", "p")
+    cache = {}
+    changed = {"prefixed": 0, "flattened": 0}
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag:
+                continue
+            kind = classify(child)
+            if kind not in HIERARCHY_SPACES:
+                continue
+            spaces = " " * HIERARCHY_SPACES[kind]
+            for run in child.findall(qn("hp", "run")):
+                t = run.find(qn("hp", "t"))
+                if t is not None and t.text and t.text.strip():
+                    canonical = spaces + t.text.lstrip(" ")
+                    if t.text != canonical:
+                        t.text = canonical
+                        changed["prefixed"] += 1
+                    break
+            base_id = child.get("paraPrIDRef")
+            if base_id is not None:
+                new_id = ensure_flat_parapr(header_root, base_id, cache)
+                if new_id != base_id:
+                    child.set("paraPrIDRef", new_id)
+                    changed["flattened"] += 1
+    return changed
+
+
 def ensure_charpr_sized(header_root, base_id, height, cache):
     """base_id charPr을 폰트는 유지한 채 height(HWPUNIT)만 바꾼 복제본 id를 반환한다."""
     key = (base_id, height)
@@ -698,6 +768,11 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
         cr = apply_center_tables(header_root, list(section_roots.values()))
         summary["center_tables"] = cr
         if cr["centered"]["caption"] or cr["centered"]["table"]:
+            any_target_found = True
+            any_change = True
+        sh = apply_space_hierarchy(header_root, list(section_roots.values()))
+        summary["space_hierarchy"] = sh
+        if sh["prefixed"] or sh["flattened"]:
             any_target_found = True
             any_change = True
 

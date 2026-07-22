@@ -262,7 +262,8 @@ def test_all_preserves_text_content(hwpx_file):
     with zipfile.ZipFile(hwpx_file) as z:
         after = [t for t, _ in all_text_and_ids(z.read("Contents/section0.xml"))]
 
-    assert before == after  # 삽입된 스페이서는 t 텍스트가 없어 비교 대상에서 제외됨(비파괴 확인)
+    # 띄어쓰기 계층('26.7.22)은 선두 공백만 바꾸므로 strip 비교 — 의미 콘텐츠 비파괴 확인
+    assert [b.strip() for b in before] == [a.strip() for a in after]
 
 
 def test_zip_structure_preserved(hwpx_file):
@@ -306,7 +307,7 @@ def test_main_all_success_exit0(hwpx_file, capsys):
 def test_main_nothing_to_do_exit1(tmp_path, capsys):
     section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
-  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 요지1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t> ㅇ 요지1</hp:t></hp:run></hp:p>
 </hs:sec>
 """
     p = tmp_path / "nothing.hwpx"
@@ -687,3 +688,28 @@ def test_title_box_keeps_gradient_fill(tmp_path):
         assert target.find(ph.qn("hh", tname)).get("type") == "NONE"
     assert target.find(ph.qn("hc", "fillBrush")) is not None  # 그라데이션 보존
     assert f'borderFillIDRef="{new_id}"' in sec_txt
+
+
+def test_space_hierarchy_prefix_and_flatten(tmp_path):
+    section = '''<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 절</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="3" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 요지</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="3" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>- 상세</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>＊ 각주</hp:t></hp:run></hp:p>
+</hs:sec>
+'''
+    header = HEADER_XML.replace(
+        "</hh:paraProperties>",
+        '''<hh:paraPr id="3" tabPrIDRef="0"><hh:align horizontal="JUSTIFY" vertical="BASELINE"/><hh:margin><hc:intent value="-2205" unit="HWPUNIT"/><hc:left value="1500" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin></hh:paraPr></hh:paraProperties>''')
+    p = tmp_path / "sh.hwpx"
+    build_hwpx(str(p), header_xml=header, section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    sh = summary["space_hierarchy"]
+    assert sh["prefixed"] >= 3 and sh["flattened"] >= 2
+    with zipfile.ZipFile(str(p)) as z:
+        sec = z.read("Contents/section0.xml").decode()
+    assert "<hp:t>□ 절</hp:t>" in sec              # 0칸
+    assert "<hp:t> ㅇ 요지</hp:t>" in sec           # 1칸
+    assert "<hp:t>   - 상세</hp:t>" in sec          # 3칸
+    assert "<hp:t>     ＊ 각주</hp:t>" in sec       # 5칸 (star-footnote 미실행이라 텍스트만 확인)
