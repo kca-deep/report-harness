@@ -449,9 +449,9 @@ def test_title_box_borderless_replaces_refs(tmp_path):
         sec = z.read("Contents/section0.xml").decode()
     i = sec.find("제목텍스트")
     seg = sec[max(0, i - 400):i]
-    # 원본(id=3, SOLID) 참조가 무테두리 변형으로 교체됨 — 배경 보존형 의미론('26.7.22 개정)
-    assert 'borderFillIDRef="3"' not in seg
-    new_id = summary["title_box"]["variants"]["3"]
+    # 원본(id=1, SOLID) 참조가 배경 보존 무테두리 변형으로 교체됨 ('26.7.22 개정)
+    assert 'borderFillIDRef="1"' not in seg
+    new_id = summary["title_box"]["variants"]["1"]
     assert f'borderFillIDRef="{new_id}"' in seg
 
 
