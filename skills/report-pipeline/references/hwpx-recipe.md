@@ -46,6 +46,9 @@ python3 skills/report-pipeline/scripts/prep_report_md.py \
 mcp__kordoc__extract_profile(
     hwpx_path="{template_hwpx}",
     output_path="{work_dir}/format-profile.json")
+
+(선택) 추출 JSON을 사람이 읽는 프로파일 md로 렌더하려면 보조 헬퍼를 쓴다 —
+`python3 skills/report-pipeline/scripts/extract_format_profile.py {work_dir}/format-profile.json -o {state_dir}/format-profile.{기관}.md`
 ```
 
 도식 마커(`도식: {패턴ID}`)가 본문에 있으면, `generate_document` 호출 전에 md 텍스트 단계에서
