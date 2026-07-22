@@ -136,7 +136,7 @@ mcp__kordoc__patch_document(
   자리에서만 치환이 성립한다(§7-1 배치 승인이 게이트①에서 이미 확정돼 있어야 하는 이유).
 - 이미지가 없으면 이 단계는 생략하고 §3.5로 진행.
 
-## 3.5. 후처리 — `postprocess_hwpx.py --all --sender-size 12 --star-indent 30,-15.75`
+## 3.5. 후처리 — `postprocess_hwpx.py --all --sender-size 12`
 
 이미지 주입까지 끝난 hwpx를 양식 정합으로 후처리한다. §4 구조 검증 **이전**에 실행한다(스크립트가
 직접 zip을 재작성하므로, 재작성 결과를 검증 대상으로 삼아야 한다).
