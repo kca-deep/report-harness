@@ -30,3 +30,37 @@ def test_compare_detects_lost_number_and_leftover():
 def test_compare_ok_when_identical():
     src = "□ A\n ㅇ 총 502건 정비\n"
     assert compare_texts(src, src) == []
+
+def test_max_cols_loss_detected():         # 표 컬럼 유실 검출 (스펙 누락 보완)
+    src = "| 구분 | 사업명 | 담당부서 |\n|---|---|---|\n| 1 | AI플랫폼 | 정보화기획팀 |\n"
+    rt  = "| 구분 | 사업명 |\n|---|---|\n| 1 | AI플랫폼 |\n"
+    assert any(i["rule"] == "count-mismatch:max_cols" for i in compare_texts(src, rt))
+
+def test_backtick_leftover_detected():
+    issues = compare_texts("ㅇ 코드 사용법\n", "ㅇ `코드` 사용법\n")
+    assert any(i["rule"] == "markdown-leftover" for i in issues)
+
+def test_double_hash_leftover_detected():
+    issues = compare_texts("소제목\n", "## 소제목\n")
+    assert any(i["rule"] == "markdown-leftover" for i in issues)
+
+def test_hr_leftover_detected():
+    issues = compare_texts("□ 제목\nㅇ 내용\n", "□ 제목\nㅇ 내용\n---\n")
+    assert any(i["rule"] == "markdown-leftover" for i in issues)
+
+def test_italic_strike_leftover_detected():
+    assert any(i["rule"] == "markdown-leftover" for i in compare_texts("ㅇ 강조 문구\n", "ㅇ *강조* 문구\n"))
+    assert any(i["rule"] == "markdown-leftover" for i in compare_texts("ㅇ 삭제 문구\n", "ㅇ ~~삭제~~ 문구\n"))
+
+def test_number_reformat_not_lost():       # 표기 정규화는 손실 아님 (오탐 제거)
+    assert compare_texts("ㅇ 예산 1,234백만원 편성\n", "ㅇ 예산 1234백만원 편성\n") == []
+    assert compare_texts("ㅇ 비율 23.70%\n", "ㅇ 비율 23.7%\n") == []
+
+def test_real_number_loss_still_detected():
+    issues = compare_texts("ㅇ 총 502건 정비, 137명 참여\n", "ㅇ 총 502건 정비\n")
+    assert any(i["rule"] == "numbers-lost" and "137" in str(i["values"]) for i in issues)
+
+def test_cli_missing_args_exit2(tmp_path):
+    import subprocess, sys as _sys
+    r = subprocess.run([_sys.executable, str(pathlib.Path(__file__).resolve().parents[1] / "skills/report-pipeline/scripts/validate_hwpx.py"), "compare"], capture_output=True)
+    assert r.returncode == 2
