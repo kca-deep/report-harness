@@ -275,6 +275,57 @@ def apply_spacing(header_root, section_roots):
             "modified": sum(1 for e in events if e["type"] == "modify")}
 
 
+def ensure_centered_clone(header_root, base_id, cache):
+    """base paraPr을 복제해 align horizontal=CENTER인 paraPr id를 반환(중복 생성 방지 캐시)."""
+    if base_id in cache:
+        return cache[base_id]
+    paraprops = header_root.find(f".//{qn('hh', 'paraProperties')}")
+    base = None
+    for pp in paraprops.findall(qn("hh", "paraPr")):
+        if pp.get("id") == base_id:
+            base = pp
+            break
+    if base is None:
+        return base_id
+    align = base.find(qn("hh", "align"))
+    if align is not None and align.get("horizontal") == "CENTER":
+        cache[base_id] = base_id
+        return base_id
+    new_pp = copy.deepcopy(base)
+    max_id = max(int(pp.get("id")) for pp in paraprops.findall(qn("hh", "paraPr")))
+    new_id = str(max_id + 1)
+    new_pp.set("id", new_id)
+    na = new_pp.find(qn("hh", "align"))
+    if na is not None:
+        na.set("horizontal", "CENTER")
+    paraprops.append(new_pp)
+    paraprops.set("itemCnt", str(len(paraprops.findall(qn("hh", "paraPr")))))
+    cache[base_id] = new_id
+    return new_id
+
+
+def apply_center_tables(header_root, section_roots):
+    """표 캡션 문단과 표 래퍼 문단(treatAsChar 표)을 가운데 정렬 paraPr로 교체."""
+    p_tag = qn("hp", "p")
+    cache = {}
+    centered = {"caption": 0, "table": 0}
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag:
+                continue
+            kind = classify(child)
+            if kind not in ("caption", "table"):
+                continue
+            base_id = child.get("paraPrIDRef")
+            if base_id is None:
+                continue
+            new_id = ensure_centered_clone(header_root, base_id, cache)
+            if new_id != base_id:
+                child.set("paraPrIDRef", new_id)
+            centered[kind] += 1
+    return {"centered": centered, "new_parapr": {k: v for k, v in cache.items() if k != v}}
+
+
 CONTENT_KINDS = {"sending", "dae", "yo", "dash", "star", "cham", "caption", "table", "other"}
 
 
@@ -395,6 +446,11 @@ def process_file(path, star=False, spacing=False):
             any_target_found = True
             any_change = True
         summary["effective_gaps"] = effective_gaps(header_root, list(section_roots.values()))
+        cr = apply_center_tables(header_root, list(section_roots.values()))
+        summary["center_tables"] = cr
+        if cr["centered"]["caption"] or cr["centered"]["table"]:
+            any_target_found = True
+            any_change = True
 
     data["Contents/header.xml"] = serialize_xml(header_root)
     for name, root in section_roots.items():

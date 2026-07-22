@@ -329,3 +329,24 @@ def test_zero_margins_removes_parapr_prev(tmp_path):
     # 실효 간격 리포트: □→ㅇ = 스페이서 6pt + prev 0
     gaps = {g["between"]: g["gap_pt"] for g in summary["effective_gaps"]}
     assert gaps.get("dae→yo") == 6.0
+
+
+def test_center_tables_and_captions(tmp_path):
+    p = tmp_path / "ct.hwpx"
+    build_hwpx(str(p))
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["center_tables"]["centered"]["caption"] >= 1
+    assert summary["center_tables"]["centered"]["table"] >= 1
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = z.read("Contents/header.xml").decode()
+        sec = z.read("Contents/section0.xml").decode()
+    assert 'horizontal="CENTER"' in hdr
+    import re as _re
+    i = sec.find("[ 표 제목 ]")
+    seg = sec[max(0, i - 400):i]
+    pid = _re.findall(r'paraPrIDRef="(\d+)"', seg)[-1]
+    assert pid != "0"
+    j = sec.find("ㅇ 요지1")
+    seg2 = sec[max(0, j - 400):j]
+    pid2 = _re.findall(r'paraPrIDRef="(\d+)"', seg2)[-1]
+    assert pid2 == "0"
