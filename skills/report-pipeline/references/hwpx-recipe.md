@@ -78,7 +78,7 @@ mcp__kordoc__generate_document(
            "cham": 13,               # ※·＊ 13pt
            "table": 12,              # 표 12pt
            "bodyTitle": 20},         # 제목 박스 20pt (HY헤드라인M 20pt)
-    bullet2="ᄋ",                    # 2단 부호 = 양식의 ㅇ(이응)
+    bullet2="ㅇ",                    # 2단 부호 = 양식의 ㅇ (스키마 설명은 ᄋ이나 실 enum 값은 ㅇ U+3147)
     body_title_box=True,             # 제목 표구조(박스) — 양식 제목부 재현
     line_spacing=160,                # 편집용지 줄간격 160%
     profile_path="{work_dir}/format-profile.json")   # template_hwpx 설정 시에만 전달

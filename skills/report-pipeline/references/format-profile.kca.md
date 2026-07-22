@@ -55,7 +55,7 @@
 | 제목 (박스) | HY헤드라인M 20pt | `body_title_box=True` + `sizes.bodyTitle=20` (+ fonts.heading) |
 | □ 절 제목 | HY헤드라인M 15pt | `fonts.heading="HY헤드라인M"` + `sizes.dae=15` |
 | ㅇ·- 본문 | 휴먼명조 15pt | `fonts.body="휴먼명조"` + `body_pt=15` |
-| ㅇ 부호 | ㅇ(이응) | `bullet2="ᄋ"` |
+| ㅇ 부호 | ㅇ(이응) | `bullet2="ㅇ"` (실 enum 값 U+3147) |
 | ※·＊ 참고 | 맑은고딕 13pt | `fonts.ref="맑은고딕"` + `sizes.cham=13` |
 | 표 본문 | 맑은 고딕 12pt | `fonts.table="맑은 고딕"` + `sizes.table=12` |
 | 줄간격 | 160% | `line_spacing=160` |
