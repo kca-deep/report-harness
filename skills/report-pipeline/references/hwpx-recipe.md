@@ -23,8 +23,9 @@ python3 skills/report-pipeline/scripts/prep_report_md.py \
     {work_dir}/20_draft.md -o {work_dir}/40_prepared.md
 ```
 
-- `prep_report_md.py`는 내용을 한 글자도 바꾸지 않는다 — 단일행 HTML 주석 제거, 구분선(HR)
-  정리, 각주 마커(`\*`/반각 `*`) → 전각 `＊` 정규화만 수행한다.
+- `prep_report_md.py`는 의미 콘텐츠를 보존한다 — 단일행 HTML 주석 제거·문맥 확인된 구분선
+  제거·각주 마커 전각 정규화만 수행하며, 삭제 문자수는 회계로 검증되고 모호한 입력(다중행
+  주석·Setext 패턴)은 exit 2로 거부한다.
 - **모호한 입력은 조용히 처리하지 않고 거부한다**(`PrepError`) — "모른다"를 명시적 실패로
   만드는 설계다. 대표 거부 사유:
   - `multiline-comment`: 여는 `<!--`와 닫는 `-->`가 다른 줄에 걸침(md-profile §2-3의
@@ -122,14 +123,17 @@ mcp__kordoc__parse_document(file_path="{work_dir}/final/{제목}.hwpx")
 
 ### 4-3. 내용 대조
 
+compare의 src는 40_prepared.md — prep이 마크업(주석·구분선·각주 표기)을 바꾸므로 변환 입력과
+동일본을 기준으로 대조해야 오탐이 없다. draft↔prepared 정합은 prep의 삭제 회계가 별도 보증한다.
+
 ```
 python3 skills/report-pipeline/scripts/validate_hwpx.py \
     compare {work_dir}/40_prepared.md {work_dir}/40_roundtrip.md
 ```
 
 - 대조 항목: □ 섹션 수·ㅇ/○ 요지 수·대시 상세 수·＊ 각주 수·표 개수·표 최대 열 수·수치 표본
-  (콤마·소수 정규화 후 손실분), 그리고 되읽기 텍스트에 마크다운 잔재(헤딩·구분선·백틱·`**`·
-  이탤릭·서술 중 공백-하이픈)가 남아있는지(AI 티 3중 장치 ③ — 변환기가 기호를 문자 그대로
+  (콤마·소수 정규화 후 손실분), 그리고 되읽기 텍스트에 마크다운 잔재(~~헤딩~~·~~구분선~~·~~백틱~~·~~`**`~~·
+  ~~이탤릭~~·~~서술 중 공백-하이픈~~)가 남아있는지(AI 티 3중 장치 ③ — 변환기가 기호를 문자 그대로
   박아버리는 사고의 최종 검출선).
 - exit 0(`{"issues": []}`): 일치. §7로 진행.
 - exit 1: `issues` 배열에 `count-mismatch:{항목}` / `numbers-lost` / `markdown-leftover` 등
@@ -173,6 +177,6 @@ python3 skills/report-pipeline/scripts/validate_hwpx.py \
 | 스크립트 | 호출 | exit 0 | exit 1 | exit 2 |
 |---|---|---|---|---|
 | `prep_report_md.py` | `prep_report_md.py <src> -o <out>` | 정규화 성공, `<out>` 기록 | — (사용 안 함) | `PrepError`(모호한 입력 거부) |
-| `validate_hwpx.py structural` | `validate_hwpx.py structural <path.hwpx>` | 구조 정상(`errors:[]`) | 구조 손상 발견 | 인자 부족/파일 접근 오류(`OSError`) |
-| `validate_hwpx.py compare` | `validate_hwpx.py compare <src.md> <rt.md>` | 전항목 일치(`issues:[]`) | 불일치 발견 | 인자 부족/파일 접근 오류 |
+| `validate_hwpx.py structural` | `validate_hwpx.py structural <path.hwpx>` | 구조 정상(`errors:[]`) | 구조 손상 발견(파일 미존재·zip 손상, `errors` 목록에 담겨 exit 1로 재변환 루프) | 인자 부족 |
+| `validate_hwpx.py compare` | `validate_hwpx.py compare <src.md> <rt.md>` | 전항목 일치(`issues:[]`) | 불일치 발견 | 인자 부족(파일 접근 오류 시도 exit 2) |
 | `check_image_size.py` | `check_image_size.py <img> [--max-w-mm 170] [--max-h-mm 90] [--dpi 96]` | 규격 이내(`fits:true`) | 규격 초과(`fits:false`) | 포맷 인식 실패 등 예외 |
