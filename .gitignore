@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.superpowers/
+
+# 배포 제외 (spec §12) — 실보고서 원본·분석 원자재는 로컬 참고용, 배포 레포에는 포함하지 않는다.
+# form/양식(표)/ 와 form/250609_...hwp(기본 양식)는 번들 자산이므로 이 규칙에서 제외한다.
+form/보고서/
+docs/analysis/
