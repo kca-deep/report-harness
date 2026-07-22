@@ -114,7 +114,7 @@ report-harness/                          # 레포 = 플러그인 배포 원본 (
 - **모드 R (신규조사)**: 주제를 상호 독립 단위로 분해, 2개 이상이면 한 메시지 Agent 병렬 팬아웃(각자 다른 `fetched/{단위}/` → 병렬 쓰기 안전). 핵심 주장은 독립 출처 ≥2 교차검증. 산출물마다 출처 프론트매터(url·title·fetched_at·tool) + `_manifest.jsonl` append. 확정/추정 태깅 필수.
 - **이미지 수집**: 조사 중 보고서의 근거·기초가 될 수 있는 이미지(공식 통계 차트·구조도·공표 도표 등)를 `fetched/{단위}/images/`에 원본 저장 + `_manifest.jsonl`에 출처(url·발행기관·수집일) 기록. 출처 불명 이미지는 수집하지 않는다. 차용 여부·배치는 pipeline의 게이트①에서 결정(§7-1) — research는 후보 수집까지만.
 - **도구 선택** (tool-playbook.md): 법령·판례 → korean-law / 공시·재무 → opendart / 한글 문서 → kordoc / 차단 사이트 → insane-search / 다출처 심층 → deep-research / 일반 → WebSearch·WebFetch. **환경에 없는 MCP·스킬은 해당 행을 건너뛰고 일반 도구로 대체** (배포 환경 편차 흡수).
-- **vault 브릿지 (선택)** — vault 설정 시: 조사 완료 후 `fetched/` 산출물을 vault `acquired/fetched/{주제슬러그}/`에 사본 적재 + vault 장부에 `[RESEARCH-PENDING]` 기록. `raw/`는 절대 수정 금지. 다음 건 모드 Q 재사용으로 이어지는 지식 복리 고리.
+- **vault 브릿지 (선택, 승인 게이트형)** — vault 설정 시: **자동 적재 금지.** 작업폴더 `research/fetched/`가 스테이징이며, 조사 완료 보고에 "vault 적재 후보 N건" 1줄만 포함한다. 사용자가 적재를 명시 요청하거나 승인했을 때만 `fetched/` 산출물을 vault `acquired/fetched/{주제슬러그}/`에 사본 적재 + vault 장부에 `[RESEARCH-PENDING]` 기록 — 승인 전에는 장부 포함 vault의 어떤 파일도 쓰지 않는다. `raw/`는 절대 수정 금지. 승인된 적재만 다음 건 모드 Q 재사용으로 이어지는 지식 복리 고리다.
 - **소스 우선순위**: 제공자료(I) → 사전지식(Q, 있으면) → 신규조사(R). 이미 있는 근거를 다시 조사하지 않는다.
 
 ## 5. 기관보고서 양식 — style-guide.md 성문화 범위
@@ -254,8 +254,10 @@ md 최종본(20_draft.md)이 항상 SSOT — hwpx 변환이 끝내 실패해도 
 **층1 — lessons.jsonl (즉시기록)**: 게이트 피드백·변환 실패 수신 즉시 1줄 append:
 
 ```json
-{"date":"2026-07-21","case":"260721_건명","gate":"outline|draft|factcheck|convert","feedback":"표가 페이지 넘어감","fix":"표 분할","promoted":false}
+{"date":"2026-07-21","case":"260721_건명","gate":"research|analyze|outline|draft|factcheck|convert","feedback":"표가 페이지 넘어감","fix":"표 분할","promoted":false}
 ```
+
+게이트 식별자(`lessons.gate`, 6값 enum)와 rules 태그(`[research]`/`[analyze]`/`[draft]`/`[export]` 등 `[단계]`)는 별개 체계다 — gate는 lessons.jsonl 필드, 태그는 rules.md 항목 표기 전용이며 feedback 문자열에 중복 삽입하지 않는다.
 
 **단계 마무리 축적 (신설)**: 4단계 각각의 **종료 시점**에 그 단계에서 발생한 피드백·실패·수정을 lessons.jsonl에 단계 태그(`[research]`/`[analyze]`/`[draft]`/`[export]`)로 기록한다. 반복 관찰(동일 유형 2회↑) 항목은 최종 회고까지 기다리지 않고 **그 자리에서 승격 후보로 제안** — 사용자 승인 시 rules.md 즉시 반영되어, 같은 건의 다음 단계·다음 퇴고부터 바로 적용된다(동일 실수 재발의 최소 창). 기존 [목차][초안][hwpx] 태그는 [draft]/[export]의 세부 태그로 통합.
 

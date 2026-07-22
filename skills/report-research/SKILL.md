@@ -20,9 +20,9 @@ firecrawl, korean-law, opendart, kordoc, WebSearch·WebFetch, Context7, youtube-
   단계가 읽지 못한다 — 조사를 아무리 잘해도 계약을 어기면 실패로 취급한다.
 - **소스 우선순위**: 제공자료(모드 I) → 사전지식(모드 Q, vault 설정 시) → 신규조사(모드 R).
   이미 확보된 근거를 다시 조사하지 않는다.
-- **팩트/주장 분리**: 조사 산출물 자체는 원문 그대로 수집한다 — 이 스킬 단계에서 판단·평가·
-  요약 왜곡을 섞지 않는다. 확정/추정 태깅(§2-4)만 판단 행위이며, 그 기준은 "원출처를 직접
-  추적할 수 있는가"다.
+- **팩트/주장 분리**: 조사 산출물은 원문을 발췌해 수집한다(클리핑은 원문 그대로) — 의역이나
+  자체 요약으로 대체하지 않는다. 판단·평가는 이 스킬 단계에서 섞지 않는다. 확정/추정 태깅
+  (§2-4)만 판단 행위이며, 그 기준은 "원출처를 직접 추적할 수 있는가"다.
 
 ## 2. 산출 계약
 
@@ -32,6 +32,11 @@ firecrawl, korean-law, opendart, kordoc, WebSearch·WebFetch, Context7, youtube-
 출력 JSON의 `reports_dir`(null이면 `{cwd}/reports`)을 기준으로
 `{reports_dir}/{YYYYMMDD}/{HHMM}_{건명슬러그}/`가 이번 건의 작업폴더다. 이미 진행 중인 건이면
 새 폴더를 만들지 말고 그 폴더를 계속 쓴다(폴더가 맥락을 기억하는 매개).
+
+**기존 건 탐색**: 새 작업 시작 전, `reports_dir` 아래 날짜 디렉토리를 최신순으로 훑어 건명
+슬러그가 부분일치하는 폴더가 있는지 확인한다. 매칭이 1건이면 그 폴더를 바로 쓴다(기본값 —
+별도로 묻지 않는다). 매칭이 여러 건이면 목록을 제시하고 사용자에게 선택받는다 — 이 선택
+질문은 폴더가 모호할 때만 던진다.
 
 같은 출력의 `knowledge_vault`가 null이 아니면 §4 vault 브릿지가 켜진다. null이면 모드 Q와
 §4 전체를 존재하지 않는 것처럼 생략한다.
@@ -66,7 +71,7 @@ tool: WebFetch
 confidence: 확정
 ---
 
-(원문 발췌·요약 본문)
+(원문 발췌 — 의역 금지)
 ```
 
 같은 정보를 폴더의 `_manifest.jsonl`에도 산출물 1건당 1줄로 append한다(JSON Lines — append
@@ -88,8 +93,9 @@ confidence: 확정
 ### 2-5. 이미지 수집 규약
 
 보고서의 근거·기초가 될 수 있는 이미지(공식 통계 차트·구조도·공표 도표 등)만
-`research/fetched/{주제슬러그}/images/`에 원본 그대로 저장하고, `_manifest.jsonl`에 같은
-스키마로 출처(`source_url`·발행기관을 `title`에 포함·`fetched_at`)를 기록한다.
+`research/fetched/{주제슬러그}/images/`에 원본 그대로 저장하고, `_manifest.jsonl`에 본문
+산출물과 **동일 스키마 전체**(`file`·`source_url`·`title`·`fetched_at`·`tool`·`confidence`)를
+기록한다 — `title`에는 발행기관을 포함한다.
 
 - **출처 불명 이미지는 수집하지 않는다.** 장식용·워터마크만 있는 이미지도 수집 대상이 아니다.
 - 차용 여부·본문 배치는 이 단계의 일이 아니다 — pipeline의 게이트①에서 결정한다. 이 스킬은
@@ -126,15 +132,26 @@ confidence: 확정
    추적이 안 되면 `미확정`으로 태깅한다(§2-4의 확정/추정과 별도 표기 — 위키 인용 전용 태그).
 5. 위키에서 이미 답이 나온 부분은 모드 R로 다시 조사하지 않는다(§1 소스 우선순위).
 
-### vault 사본 적재 (조사 완료 후)
+### vault 승격 — 승인 게이트형 (자동 적재 금지)
 
-- 모드 R 산출물(`research/fetched/`)을 `{knowledge_vault}/acquired/fetched/{주제슬러그}/`에
-  **사본으로** 적재한다 — 작업폴더 원본은 그대로 둔다(1차 저장소는 항상 작업폴더).
-- vault 장부(`wiki/log.md`)에 `[RESEARCH-PENDING] {주제} → acquired/fetched/{폴더}` 한 줄을
-  append한다. 위키 컴파일은 이 스킬의 책임이 아니다 — 후속 vault 세션에서 처리한다.
+claudian vault의 거버넌스(스테이징 → 검토·승인 통과분만 적재, 승인 전 적재 금지)에 맞춰,
+**이 스킬은 vault에 자동으로 아무것도 적재하지 않는다.** 작업폴더 `research/fetched/`가
+스테이징이다 — 1차 저장소는 항상 작업폴더이며, vault 유무와 무관하게 그 자체로 완결된다.
+
+- 조사 완료 시 §6 종료 요약 1줄 보고에 **"vault 적재 후보 N건"**을 포함한다(적재 자체는
+  아직 하지 않는다 — 후보 존재만 알린다).
+- **사용자가 적재를 명시 요청하거나 승인했을 때만** 다음을 수행한다:
+  1. 모드 R 산출물(`research/fetched/{주제슬러그}/`)을
+     `{knowledge_vault}/acquired/fetched/{주제슬러그}/`에 **사본으로** 적재(작업폴더 원본은
+     그대로 둔다).
+  2. vault 장부(`wiki/log.md`)에 `[RESEARCH-PENDING] {주제} → acquired/fetched/{폴더}` 한 줄을
+     append한다. 위키 컴파일은 이 스킬의 책임이 아니다 — 후속 vault 세션에서 처리한다.
+- **승인 전에는 vault의 어떤 파일도 쓰지 않는다** — `wiki/log.md` 장부 기록도 예외 없이
+  승인 이후에만 수행한다.
 - **`{knowledge_vault}/raw/`는 절대 수정·삭제하지 않는다.** 이 스킬은 raw를 읽기·인용만
-  한다(모드 Q). 쓰기는 `acquired/`로만 나간다.
-- 이 사본 적재가 다음 건의 모드 Q 재사용으로 이어지는 지식 복리 고리다.
+  한다(모드 Q). 쓰기는 승인 후 `acquired/`로만 나간다.
+- 승인된 적재가 다음 건의 모드 Q 재사용으로 이어지는 지식 복리 고리다 — 승인 게이트를 거친
+  적재만 복리 대상으로 삼는다.
 
 ## 5. 시간 예산
 
@@ -154,16 +171,21 @@ confidence: 확정
 
 1. **조사 요약 1줄 보고**: 진행 상황을 장황하게 나열하지 않는다. 예:
    `"조사 3단위 팬아웃 완료(1건 공백) — research/fetched/ 3폴더, 이미지 후보 2건"`.
-   실패·공백 단위가 있으면 이 한 줄에 반드시 포함한다.
+   실패·공백 단위가 있으면 이 한 줄에 반드시 포함한다. `knowledge_vault`가 설정돼 있으면
+   같은 줄에 **"vault 적재 후보 N건"**을 덧붙인다(§4 — 적재는 사용자 승인 후에만 실행,
+   이 보고는 후보 존재를 알리는 것뿐이다). 예:
+   `"조사 3단위 팬아웃 완료 — research/fetched/ 3폴더, vault 적재 후보 3건"`.
 2. **lessons 기록**: `python3 skills/report-pipeline/scripts/harness_config.py` 출력의
    `state_dir` 아래 `lessons.jsonl`에, 이번 조사 단계에서 발생한 특이사항(도구 미설치로 대체,
-   교차검증 실패, 15분 초과, manifest 계약 위반 발견 등)을 `[research]` 태그로 1줄
-   append한다. 특이사항이 전혀 없어도(첫 시행부터 매끈하게 끝났어도) 생략 가능하지만,
+   교차검증 실패, 15분 초과, manifest 계약 위반 발견 등)을 `gate:"research"`로 1줄
+   append한다(`gate`는 `research|analyze|outline|draft|factcheck|convert` 6값 enum 중 하나 —
+   rules.md의 `[research]` 같은 단계 태그는 rules 파일 전용이며 feedback 문자열에 중복
+   삽입하지 않는다). 특이사항이 전혀 없어도(첫 시행부터 매끈하게 끝났어도) 생략 가능하지만,
    조사 단계에서 실제로 일어난 일탈은 빠짐없이 남긴다 — 이 기록이 다음 건 프리플라이트와
    회귀검사에 반영되는 복리축적의 시작점이다.
 
 ```json
-{"date":"2026-07-22","case":"{work_dir 슬러그}","gate":"research","feedback":"[research] deep-research 미설치 환경 — WebSearch 1패스로 대체","fix":"tool-playbook 대체 경로 적용","promoted":false}
+{"date":"2026-07-22","case":"{work_dir 슬러그}","gate":"research","feedback":"deep-research 미설치 환경 — WebSearch 1패스로 대체","fix":"tool-playbook 대체 경로 적용","promoted":false}
 ```
 
 도구 선택 매핑은 `references/tool-playbook.md`를 참고한다.

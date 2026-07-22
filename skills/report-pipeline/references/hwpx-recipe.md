@@ -153,10 +153,12 @@ python3 skills/report-pipeline/scripts/validate_hwpx.py \
 ## 6. lessons 기록
 
 변환 과정에서 발생한 실패 유형(불일치·prep 거부·이미지 규격 초과 등)은 단계 종료 시
-`state_dir/lessons.jsonl`에 `[export]` 태그로 1줄 append한다.
+`state_dir/lessons.jsonl`에 `gate:"convert"`로 1줄 append한다(`gate`는
+`research|analyze|outline|draft|factcheck|convert` 6값 enum 중 하나 — rules.md의 `[export]`
+같은 단계 태그는 rules 파일 전용이며 feedback 문자열에 중복 삽입하지 않는다).
 
 ```json
-{"date":"2026-07-22","case":"{work_dir 슬러그}","gate":"convert","feedback":"[export] 도식 표 치환 후 각주 수 불일치","fix":"슬롯 치환 순서 조정 후 재변환","promoted":false}
+{"date":"2026-07-22","case":"{work_dir 슬러그}","gate":"convert","feedback":"도식 표 치환 후 각주 수 불일치","fix":"슬롯 치환 순서 조정 후 재변환","promoted":false}
 ```
 
 - 동일 유형이 2회 이상 반복 관찰되면 회고까지 기다리지 않고 그 자리에서 승격을 제안한다 —

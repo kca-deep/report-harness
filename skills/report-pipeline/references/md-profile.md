@@ -113,8 +113,10 @@ style-guide 기준)가 잡아야 한다.
 
 1. **위반 유형 발견**: 게이트② 피드백, 팩트체크, 왕복 QA(hwpx 되읽기 텍스트 재검사, §3의
    `AI 티 결정론 방지 3중 장치 ③`) 어디서든 md-profile을 벗어난 잔재가 나오면 즉시
-   `lessons.jsonl`에 1줄 append(`gate` 태그: `outline|draft|factcheck|convert`, 단계 마무리
-   태그: `[draft]`/`[export]`).
+   `lessons.jsonl`에 1줄 append한다(`gate`는 `research|analyze|outline|draft|factcheck|convert`
+   6값 enum 중 발생 단계에 맞는 값 하나 — 여기서는 보통 `draft`/`factcheck`/`convert`. rules.md의
+   `[draft]`/`[export]` 같은 단계 태그는 rules 파일 전용이며 feedback 문자열에 중복 삽입하지
+   않는다).
 2. **반복 관찰(동일 유형 2회 이상)**은 회고까지 기다리지 않고 그 자리에서 승격 후보로 제안 —
    사용자 승인 시 `rules.md`에 `R0NN [draft]` 형태로 즉시 반영한다.
 3. **룰 추가**: 일반화 가능한 위반은 이 문서(§2 또는 §3)에 항목을 추가하고, 대응하는 정규식/
