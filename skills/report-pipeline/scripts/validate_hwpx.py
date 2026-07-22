@@ -104,7 +104,10 @@ def _is_signal_number(normed):
     return len(normed) >= 3
 
 def _extract_number_set(text):
-    normed = (normalize_num(n) for n in NUM.findall(text))
+    # 날짜 패턴 제거: 아포스트로피 날짜('26.7월, '26. 1. 13) 및 월(月)이 붙은 날짜
+    masked = re.sub(r"['']\d{2}\.\s?\d{1,2}(?:\.\s?\d{1,2})?\.?(?:月|월|日|일)?", "", text)
+    masked = re.sub(r"\d{1,2}\.\d{1,2}(?=月|월)", "", masked)
+    normed = (normalize_num(n) for n in NUM.findall(masked))
     return {n for n in normed if _is_signal_number(n)}
 
 def numbers_check(draft_text, research_dir):

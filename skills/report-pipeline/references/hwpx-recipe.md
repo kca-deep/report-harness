@@ -68,6 +68,8 @@ mcp__kordoc__generate_document(
   전달로 회귀를 막는다).
 - `template_hwpx` 미설정 시 `profile_path`를 생략하면 kordoc 보고서 preset 기본 서식이
   적용된다(format-profile.kca.md가 번들 시드로 이미 반영된 상태).
+- **kordoc 자체 표기법 경고**(4자리 연도·콜론 붙임 권장 등)는 `style-guide.md`의 기관 관례(`'26.` 축약·` : ` 콜론형)가 우선이므로 **무시하고 진행한다** — 경고이지 오류가 아니다.
+- **2단 불릿 ㅇ(U+3147)을 원문 그대로 유지**하려면 `generate_document`에 `bullet2` 파라미터를 명시한다(미지정 시 ○로 정규화되며 compare의 points 집계는 두 기호를 동일 취급).
 
 ## 3. 이미지 주입 — 규격 판정 → `patch_document`
 
@@ -135,6 +137,7 @@ python3 skills/report-pipeline/scripts/validate_hwpx.py \
   (콤마·소수 정규화 후 손실분), 그리고 되읽기 텍스트에 마크다운 잔재(헤딩·구분선·백틱·`**`·
   이탤릭·취소선(`~~..~~`)·서술 중 공백-하이픈 — 7종)가 남아있는지(AI 티 3중 장치 ③ — 변환기가 기호를 문자 그대로
   박아버리는 사고의 최종 검출선).
+- **되읽기 텍스트의 밑줄 이스케이프**(`generate_document` 등)는 kordoc 파서의 정상 재현 차이로 compare가 검출하지 않는다 — 알려진 무해 차이.
 - exit 0(`{"issues": []}`): 일치. §7로 진행.
 - exit 1: `issues` 배열에 `count-mismatch:{항목}` / `numbers-lost` / `markdown-leftover` 등
   판정 근거와 함께 나열 — §5로 이동.

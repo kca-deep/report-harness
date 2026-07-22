@@ -80,3 +80,12 @@ def test_numbers_mode_clean(tmp_path):
     rdir = tmp_path / "research"; rdir.mkdir()
     (rdir / "a.jsonl").write_text('{"t":"137명 참여, 비율 23.70%"}')
     assert numbers_check("ㅇ 137명(23.7%)\n", rdir) == []
+
+def test_numbers_mode_ignores_korean_dates(tmp_path):
+    from validate_hwpx import numbers_check
+    rdir = tmp_path / "research"; rdir.mkdir()
+    draft = "ㅇ 시행 : '26.7월 / 기간 '26. 1. 13(화) ~ 1. 23(금) / 정비 502건\n"
+    issues = numbers_check(draft, rdir)
+    vals = {v for i in issues for v in i["values"]}
+    assert "26.7" not in vals and "26.1" not in vals   # 날짜 표기는 수치 아님
+    assert "502" in vals                                # 실수치는 검출 유지
