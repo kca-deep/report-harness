@@ -2,7 +2,7 @@
 개조식 기호(□ㅇ○-※＊)는 항목 '선두'에서만 합법. 그 외 위치의 마크다운 기호는 위반."""
 import sys, json, re
 
-LEAD = re.compile(r"^\s*(□|ㅇ|○|-|※|＊|\*|\d+\.|\[\d+\])\s")   # 항목 선두 허용 기호
+LEAD = re.compile(r"^\s*(□|ㅇ|○|-|※|＊|\d+\.|\[\d+\])\s")   # 항목 선두 허용 기호 (반각 * 제외 — 각주는 전각 ＊만 합법)
 TABLE = re.compile(r"^\s*\|")
 BOLD = re.compile(r"\*\*[^*\n]+\*\*")
 INLINE_BAD = re.compile(r"(?:\s-\s|(?<!\*)\*(?!\*)|`|^#{1,6}\s|\s>\s)")
