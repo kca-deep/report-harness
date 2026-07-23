@@ -503,7 +503,9 @@ def ensure_hang_parapr(header_root, base_id, hang, cache):
     if base is None:
         cache[key] = base_id
         return base_id
-    want = {"left": str(hang), "intent": str(-hang), "prev": "0", "next": "0"}
+    # 한글 내어쓰기 의미론: 음수 intent = "첫 줄은 left 위치, 랩 줄은 left+|intent|"
+    # → 첫 줄을 0(리터럴 띄어쓰기만)에 두려면 left=0·intent=-hang (원본 양식도 이 인코딩)
+    want = {"left": "0", "intent": str(-hang), "prev": "0", "next": "0"}
     margin = base.find(qn("hh", "margin"))
     if margin is not None and all(
         (el := margin.find(qn("hc", t))) is not None and el.get("value") == v

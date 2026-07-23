@@ -312,7 +312,7 @@ def test_main_nothing_to_do_exit1(tmp_path, capsys):
 """
     header = HEADER_XML.replace(
         "</hh:paraProperties>",
-        '''<hh:paraPr id="3" tabPrIDRef="0"><hh:align horizontal="JUSTIFY" vertical="BASELINE"/><hh:margin><hc:intent value="-3000" unit="HWPUNIT"/><hc:left value="3000" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin></hh:paraPr></hh:paraProperties>''')
+        '''<hh:paraPr id="3" tabPrIDRef="0"><hh:align horizontal="JUSTIFY" vertical="BASELINE"/><hh:margin><hc:intent value="-3000" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin></hh:paraPr></hh:paraProperties>''')
     p = tmp_path / "nothing.hwpx"
     build_hwpx(str(p), header_xml=header, section_xml=section)
     rc = ph.main([str(p), "--spacing"])
@@ -733,9 +733,9 @@ def test_space_hierarchy_prefix_and_flatten(tmp_path):
         k = ph.classify(para)
         if k in ("yo", "dash", "star") and k not in kinds_seen:
             kinds_seen[k] = margins.get(para.get("paraPrIDRef"), {})
-    assert kinds_seen["yo"] == {"left": "3000", "intent": "-3000"}
-    assert kinds_seen["dash"] == {"left": "3750", "intent": "-3750"}
-    assert kinds_seen["star"] == {"left": "5200", "intent": "-5200"}
+    assert kinds_seen["yo"] == {"left": "0", "intent": "-3000"}
+    assert kinds_seen["dash"] == {"left": "0", "intent": "-3750"}
+    assert kinds_seen["star"] == {"left": "0", "intent": "-5200"}
 
 
 def test_page_margins_forced_to_template(tmp_path):
