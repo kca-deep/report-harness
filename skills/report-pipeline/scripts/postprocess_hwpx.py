@@ -10,7 +10,9 @@
                     간격을 원본 KCA 양식 실측값(스페이서 문단 방식)으로 재현한다.
                     전환 지점에 이미 빈 문단이 있으면 그 charPr 높이를 치환하고,
                     없으면 새 스페이서 문단을 삽입한다. 같은 묶음으로 표 셀 텍스트
-                    가운데 정렬·표 유닛 앞뒤 간격 보정·제목 박스 테두리 제거도 적용한다.
+                    가운데 정렬·표 유닛 앞뒤 간격 보정·제목 박스 테두리 제거,
+                    제목 박스 상단 빈 패딩 행 제거(R022)·표 캡션/셀 12pt(R023)·
+                    □ 절 제목 볼드(R024)·☞ 계층 띄어쓰기(R025)도 적용한다.
   --sender-size N   발신 줄(classify=="sending") 문단 run들의 charPr을 폰트는 유지한 채
                     높이만 N(pt)로 치환한다. --all에는 포함되지 않는다(값 필요, 별도 지정).
   --star-indent L,I ＊·※ 문단의 paraPr margin을 left=L(pt)·intent=I(pt, 음수 허용)로
@@ -36,7 +38,7 @@ for _prefix, _uri in NS.items():
 SECTION_RE = re.compile(r"^Contents/section\d+\.xml$")
 SENDING_RE = re.compile(r"^<\s*'?\d")  # "< '26. 7. 22.(수), ... >" 형 발신 줄
 CAPTION_RE = re.compile(r"^[\[<]")     # "[ 표 제목 ]" / "< 표 제목 >" 형 캡션
-DAE, STAR, CHAM, DASH = "□", "＊", "※", "-"
+DAE, STAR, CHAM, DASH, ARROW = "□", "＊", "※", "-", "☞"
 YO_CHARS = ("ㅇ", "○")
 
 # 전환 유형 → (이름, 스페이서 charPr 높이 HWPUNIT = pt*100)
@@ -54,6 +56,12 @@ TRANSITIONS = {
     ("yo", "caption"): ("yo_to_caption", 600),         # 문단→캡션 6pt
     ("dash", "caption"): ("dash_to_caption", 600),
     ("cham", "caption"): ("cham_to_caption", 600),
+    # ☞ 결론 유도 기호(R025) — ※·＊ 인접 간격(3pt) 준용
+    ("cham", "arrow"): ("cham_to_arrow", 300),
+    ("star", "arrow"): ("star_to_arrow", 300),
+    ("yo", "arrow"): ("yo_to_arrow", 300),
+    ("dash", "arrow"): ("dash_to_arrow", 300),
+    ("table", "arrow"): ("table_to_arrow", 300),
 }
 BLOCK_BOUNDARY_HEIGHT = 1500  # 직전 블록 끝 → 새 □ (일반 빈줄)
 
@@ -102,6 +110,8 @@ def classify(p):
         return "star"
     if text.startswith(CHAM):
         return "cham"
+    if text.startswith(ARROW):
+        return "arrow"
     if SENDING_RE.match(text):
         return "sending"
     if CAPTION_RE.match(text):
@@ -458,6 +468,131 @@ def apply_title_box_borderless(header_root, section_roots):
             "variants": {k: v for k, v in cache.items() if k != v}}
 
 
+def apply_title_box_topgap(section_roots):
+    """제목 박스(첫 □ 이전 표)의 선두 빈 패딩 행을 제거한다(R022 — 사용자 확정 '26.7.24).
+    kordoc body_title_box는 제목 행 위아래로 빈 행을 넣는데, 상단 행이 제목표 위 여백으로
+    보이는 결함의 후처리. 첫 행의 모든 셀 문단이 빈 텍스트일 때만 제거하고, rowCnt·표 높이·
+    후속 행 rowAddr을 함께 보정한다."""
+    removed = 0
+    for tbl, is_title in _iter_content_tables(section_roots):
+        if not is_title:
+            continue
+        rows = tbl.findall(qn("hp", "tr"))
+        if len(rows) < 2:
+            continue
+        first = rows[0]
+        cells = first.findall(qn("hp", "tc"))
+        if not cells:
+            continue
+        if any(para_text(p).strip()
+               for tc in cells
+               for p in tc.iter(qn("hp", "p"))):
+            continue
+        row_height = max(
+            (int(tc.find(qn("hp", "cellSz")).get("height", "0"))
+             for tc in cells if tc.find(qn("hp", "cellSz")) is not None),
+            default=0,
+        )
+        tbl.remove(first)
+        removed += 1
+        if tbl.get("rowCnt") is not None:
+            tbl.set("rowCnt", str(max(0, int(tbl.get("rowCnt")) - 1)))
+        sz = tbl.find(qn("hp", "sz"))
+        if sz is not None and sz.get("height") is not None:
+            sz.set("height", str(max(0, int(sz.get("height")) - row_height)))
+        for tr in tbl.findall(qn("hp", "tr")):
+            for tc in tr.findall(qn("hp", "tc")):
+                addr = tc.find(qn("hp", "cellAddr"))
+                if addr is not None and addr.get("rowAddr") is not None:
+                    addr.set("rowAddr", str(max(0, int(addr.get("rowAddr")) - 1)))
+    return {"rows_removed": removed}
+
+
+def apply_caption_table_font(header_root, section_roots, pt=12):
+    """표 캡션 문단과 본문 콘텐츠 표(제목 박스 제외) 셀 문단의 charPr 크기를 pt로 치환한다
+    (R023 — 사용자 확정 '26.7.24). 폰트는 유지하고 높이만 바꾼다."""
+    height = int(round(pt * 100))
+    p_tag = qn("hp", "p")
+    cache = {}
+    caption_runs = 0
+    cell_runs = 0
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag or classify(child) != "caption":
+                continue
+            for run in child.findall(qn("hp", "run")):
+                base_id = run.get("charPrIDRef")
+                if base_id is None:
+                    continue
+                new_id = ensure_charpr_sized(header_root, base_id, height, cache)
+                if new_id != base_id:
+                    run.set("charPrIDRef", new_id)
+                    caption_runs += 1
+    for tbl, is_title in _iter_content_tables(section_roots):
+        if is_title:
+            continue
+        for cell_p in tbl.iter(p_tag):
+            for run in cell_p.findall(qn("hp", "run")):
+                base_id = run.get("charPrIDRef")
+                if base_id is None:
+                    continue
+                new_id = ensure_charpr_sized(header_root, base_id, height, cache)
+                if new_id != base_id:
+                    run.set("charPrIDRef", new_id)
+                    cell_runs += 1
+    return {"height": height, "caption_runs_changed": caption_runs,
+            "cell_runs_changed": cell_runs}
+
+
+def ensure_charpr_bold(header_root, base_id, cache):
+    """base_id charPr에 볼드가 없으면 <hh:bold/>를 더한 복제본 id를 반환한다(있으면 그대로)."""
+    if base_id in cache:
+        return cache[base_id]
+    charprops = header_root.find(f".//{qn('hh', 'charProperties')}")
+    base = None
+    for cp in charprops.findall(qn("hh", "charPr")):
+        if cp.get("id") == base_id:
+            base = cp
+            break
+    if base is None:
+        cache[base_id] = base_id
+        return base_id
+    if base.find(qn("hh", "bold")) is not None:
+        cache[base_id] = base_id
+        return base_id
+    new_cp = copy.deepcopy(base)
+    max_id = max(int(cp.get("id")) for cp in charprops.findall(qn("hh", "charPr")))
+    new_id = str(max_id + 1)
+    new_cp.set("id", new_id)
+    ET.SubElement(new_cp, qn("hh", "bold"))
+    charprops.append(new_cp)
+    charprops.set("itemCnt", str(int(charprops.get("itemCnt", "0")) + 1))
+    cache[base_id] = new_id
+    return new_id
+
+
+def apply_dae_bold(header_root, section_roots):
+    """□ 절 제목 문단 run의 charPr을 볼드 변형으로 치환한다(R024 — 사용자 확정 '26.7.24)."""
+    p_tag = qn("hp", "p")
+    cache = {}
+    found = 0
+    changed = 0
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag or classify(child) != "dae":
+                continue
+            found += 1
+            for run in child.findall(qn("hp", "run")):
+                base_id = run.get("charPrIDRef")
+                if base_id is None:
+                    continue
+                new_id = ensure_charpr_bold(header_root, base_id, cache)
+                if new_id != base_id:
+                    run.set("charPrIDRef", new_id)
+                    changed += 1
+    return {"dae_found": found, "runs_changed": changed}
+
+
 # KCA 양식 편집용지 여백 (HWPUNIT, 7200/inch): 좌우 20mm·위 10mm·아래 15mm·머리말 15mm·꼬리말 10mm
 PAGE_MARGINS = {"left": "5669", "right": "5669", "top": "2835", "bottom": "4252",
                 "header": "4252", "footer": "2835"}
@@ -479,13 +614,14 @@ def apply_page_margins(section_roots):
     return {"attrs_changed": changed}
 
 
-HIERARCHY_SPACES = {"dae": 0, "yo": 1, "dash": 3, "star": 5, "cham": 5}
+HIERARCHY_SPACES = {"dae": 0, "yo": 1, "dash": 3, "star": 5, "cham": 5, "arrow": 5}
 # 줄바꿈 시 둘째 줄 들여쓰기(=본문 시작 위치, HWPUNIT). 첫 줄은 intent=-left로 0에서 시작
 # ※ 값은 폰트 크기가 아니라 "그 폰트 글자폭의 배수"(□1.5글자·ㅇ2글자·대시2.5글자·＊4글자) — 사용자 보고 시 글자 단위 병기
 # (리터럴 공백이 마커 위치를 잡고, 랩된 줄은 left 위치에 정렬 — 사용자 확정 '26.7.22)
 # 산출: 공백폭=글자크기/2 — dae 0+□15+공백7.5 / yo 공백7.5+ㅇ15+7.5 / dash 22.5+대시7.5+7.5
-#       star·cham(13pt) 공백 5×6.5+기호13+6.5
-HIERARCHY_HANG = {"dae": 2250, "yo": 3000, "dash": 3750, "star": 5200, "cham": 5200}
+#       star·cham(13pt) 공백 5×6.5+기호13+6.5 / arrow(15pt 본문) 공백 5×7.5+기호15+7.5 (R025)
+HIERARCHY_HANG = {"dae": 2250, "yo": 3000, "dash": 3750, "star": 5200, "cham": 5200,
+                  "arrow": 6000}
 
 
 def ensure_hang_parapr(header_root, base_id, hang, cache):
@@ -676,7 +812,8 @@ def apply_star_indent(header_root, section_roots, left_pt, intent_pt):
     return {"left": left, "intent": intent, "found": found, "changed": changed}
 
 
-CONTENT_KINDS = {"sending", "dae", "yo", "dash", "star", "cham", "caption", "table", "other"}
+CONTENT_KINDS = {"sending", "dae", "yo", "dash", "star", "cham", "arrow", "caption", "table",
+                 "other"}
 
 
 def apply_zero_margins(header_root, section_roots):
@@ -826,6 +963,25 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
         if tbr["found"]:
             any_target_found = True
         if tbr["fills_replaced"] > 0:
+            any_change = True
+
+        tgr = apply_title_box_topgap(list(section_roots.values()))
+        summary["title_box_topgap"] = tgr
+        if tgr["rows_removed"] > 0:
+            any_target_found = True
+            any_change = True
+
+        cfr = apply_caption_table_font(header_root, list(section_roots.values()))
+        summary["caption_table_font"] = cfr
+        if cfr["caption_runs_changed"] or cfr["cell_runs_changed"]:
+            any_target_found = True
+            any_change = True
+
+        dbr = apply_dae_bold(header_root, list(section_roots.values()))
+        summary["dae_bold"] = dbr
+        if dbr["dae_found"] > 0:
+            any_target_found = True
+        if dbr["runs_changed"] > 0:
             any_change = True
 
     if sender_size is not None:

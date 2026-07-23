@@ -752,3 +752,120 @@ def test_page_margins_forced_to_template(tmp_path):
         sec_out = z.read("Contents/section0.xml").decode()
     assert 'top="2835"' in sec_out and 'footer="2835"' in sec_out
     assert 'header="4252"' in sec_out and 'bottom="4252"' in sec_out
+
+
+TITLE_BOX_SECTION = '''<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:tbl id="1" rowCnt="3" colCnt="1" borderFillIDRef="1"><hp:sz width="47909" widthRelTo="ABSOLUTE" height="3614" heightRelTo="ABSOLUTE" protect="0"/><hp:tr><hp:tc borderFillIDRef="1"><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t/></hp:run></hp:p></hp:subList><hp:cellAddr colAddr="0" rowAddr="0"/><hp:cellSz width="47909" height="382"/></hp:tc></hp:tr><hp:tr><hp:tc borderFillIDRef="1"><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>제목 텍스트</hp:t></hp:run></hp:p></hp:subList><hp:cellAddr colAddr="0" rowAddr="1"/><hp:cellSz width="47909" height="2850"/></hp:tc></hp:tr><hp:tr><hp:tc borderFillIDRef="1"><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t/></hp:run></hp:p></hp:subList><hp:cellAddr colAddr="0" rowAddr="2"/><hp:cellSz width="47909" height="382"/></hp:tc></hp:tr></hp:tbl></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>&lt; '26. 7. 24.(금), 테스트팀 &gt;</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 제목1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 요지1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>[ 캡션 ]</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:tbl id="2" rowCnt="1" colCnt="1" borderFillIDRef="1"><hp:tr><hp:tc borderFillIDRef="1"><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>셀 텍스트</hp:t></hp:run></hp:p></hp:subList><hp:cellAddr colAddr="0" rowAddr="0"/><hp:cellSz width="47909" height="382"/></hp:tc></hp:tr></hp:tbl></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>※ 단서</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>☞ 결론 유도 문장</hp:t></hp:run></hp:p>
+</hs:sec>
+'''
+
+
+def test_title_box_topgap_removes_empty_first_row(tmp_path):
+    p = tmp_path / "tg.hwpx"
+    build_hwpx(str(p), section_xml=TITLE_BOX_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["title_box_topgap"]["rows_removed"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    tbl = next(t for t in sec.iter(ph.qn("hp", "tbl")) if t.get("id") == "1")
+    rows = tbl.findall(ph.qn("hp", "tr"))
+    assert tbl.get("rowCnt") == "2" and len(rows) == 2
+    assert tbl.find(ph.qn("hp", "sz")).get("height") == str(3614 - 382)
+    # 첫 행이 제목 행이 되고 rowAddr 재배열
+    first_texts = [t.text for t in rows[0].iter(ph.qn("hp", "t"))]
+    assert "제목 텍스트" in first_texts
+    addrs = [tc.find(ph.qn("hp", "cellAddr")).get("rowAddr")
+             for tr in rows for tc in tr.findall(ph.qn("hp", "tc"))]
+    assert addrs == ["0", "1"]
+    # 본문 콘텐츠 표(id=2)는 건드리지 않음
+    tbl2 = next(t for t in sec.iter(ph.qn("hp", "tbl")) if t.get("id") == "2")
+    assert tbl2.get("rowCnt") == "1"
+
+
+def test_title_box_topgap_idempotent(tmp_path):
+    p = tmp_path / "tg2.hwpx"
+    build_hwpx(str(p), section_xml=TITLE_BOX_SECTION)
+    ph.process_file(str(p), star=False, spacing=True)
+    summary2 = ph.process_file(str(p), star=False, spacing=True)
+    assert summary2["title_box_topgap"]["rows_removed"] == 0
+
+
+def test_caption_and_cell_font_12pt(tmp_path):
+    p = tmp_path / "cf.hwpx"
+    build_hwpx(str(p), section_xml=TITLE_BOX_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    cfr = summary["caption_table_font"]
+    assert cfr["height"] == 1200
+    assert cfr["caption_runs_changed"] >= 1 and cfr["cell_runs_changed"] >= 1
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    heights = {cp.get("id"): cp.get("height") for cp in hdr.iter(ph.qn("hh", "charPr"))}
+    # 캡션 문단 run charPr 높이 1200
+    for para in sec.iter(ph.qn("hp", "p")):
+        if ph.classify(para) == "caption":
+            run = para.find(ph.qn("hp", "run"))
+            assert heights[run.get("charPrIDRef")] == "1200"
+    # 콘텐츠 표 셀 문단 run charPr 높이 1200 (제목 박스 셀은 제외)
+    tbl2 = next(t for t in sec.iter(ph.qn("hp", "tbl")) if t.get("id") == "2")
+    for cp_ref in [r.get("charPrIDRef") for r in tbl2.iter(ph.qn("hp", "run"))]:
+        assert heights[cp_ref] == "1200"
+    tbl1 = next(t for t in sec.iter(ph.qn("hp", "tbl")) if t.get("id") == "1")
+    for cp_ref in [r.get("charPrIDRef") for r in tbl1.iter(ph.qn("hp", "run"))]:
+        assert heights[cp_ref] != "1200"
+
+
+def test_dae_bold_applied(tmp_path):
+    p = tmp_path / "db.hwpx"
+    build_hwpx(str(p), section_xml=TITLE_BOX_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    dbr = summary["dae_bold"]
+    assert dbr["dae_found"] == 1 and dbr["runs_changed"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    bold_ids = {cp.get("id") for cp in hdr.iter(ph.qn("hh", "charPr"))
+                if cp.find(ph.qn("hh", "bold")) is not None}
+    for para in sec.iter(ph.qn("hp", "p")):
+        if ph.classify(para) == "dae":
+            assert para.find(ph.qn("hp", "run")).get("charPrIDRef") in bold_ids
+    # 재실행 멱등
+    summary2 = ph.process_file(str(p), star=False, spacing=True)
+    assert summary2["dae_bold"]["runs_changed"] == 0
+
+
+def test_arrow_hierarchy_spacing(tmp_path):
+    p = tmp_path / "ar.hwpx"
+    build_hwpx(str(p), section_xml=TITLE_BOX_SECTION)
+    ph.process_file(str(p), star=False, spacing=True)
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = z.read("Contents/section0.xml").decode()
+        sec_root = ET.fromstring(z.read("Contents/section0.xml"))
+    # ☞ 문단: ※·＊와 같은 5칸 선두 띄어쓰기
+    assert "<hp:t>     ☞ 결론 유도 문장</hp:t>" in sec
+    # 내어쓰기: left=0·intent=-6000 (15pt 본문 4글자 폭)
+    margins = {}
+    for pp in hdr.iter(ph.qn("hh", "paraPr")):
+        m = pp.find(ph.qn("hh", "margin"))
+        if m is not None:
+            margins[pp.get("id")] = {t: m.find(ph.qn("hc", t)).get("value")
+                                     for t in ("left", "intent")
+                                     if m.find(ph.qn("hc", t)) is not None}
+    for para in sec_root.iter(ph.qn("hp", "p")):
+        if ph.classify(para) == "arrow":
+            assert margins[para.get("paraPrIDRef")] == {"left": "0", "intent": "-6000"}
+
+
+def test_classify_arrow():
+    p = ET.fromstring('<hp:p xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph" paraPrIDRef="0"><hp:run charPrIDRef="0"><hp:t>☞ 귀결</hp:t></hp:run></hp:p>')
+    assert ph.classify(p) == "arrow"
+    assert ph.TRANSITIONS[("cham", "arrow")] == ("cham_to_arrow", 300)
