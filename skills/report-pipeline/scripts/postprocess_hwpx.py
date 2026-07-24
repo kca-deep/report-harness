@@ -11,8 +11,9 @@
                     전환 지점에 이미 빈 문단이 있으면 그 charPr 높이를 치환하고,
                     없으면 새 스페이서 문단을 삽입한다. 같은 묶음으로 표 셀 텍스트
                     가운데 정렬·표 유닛 앞뒤 간격 보정·제목 박스 테두리 제거,
-                    제목 박스 상단 빈 패딩 행 제거(R022)·표 캡션/셀 12pt(R023)·
-                    □ 절 제목 볼드(R024)·☞ 계층 띄어쓰기(R025)도 적용한다.
+                    제목 박스 상단 여백 제거(앵커 줄간격 100%·outMargin top 0 — 상단
+                    그라데이션 밴드 행은 양식 원형이므로 유지, R022)·표 캡션/셀
+                    12pt(R023)·□ 절 제목 볼드(R024)·☞ 계층 띄어쓰기(R025)도 적용한다.
   --sender-size N   발신 줄(classify=="sending") 문단 run들의 charPr을 폰트는 유지한 채
                     높이만 N(pt)로 치환한다. --all에는 포함되지 않는다(값 필요, 별도 지정).
   --star-indent L,I ＊·※ 문단의 paraPr margin을 left=L(pt)·intent=I(pt, 음수 허용)로
@@ -468,44 +469,77 @@ def apply_title_box_borderless(header_root, section_roots):
             "variants": {k: v for k, v in cache.items() if k != v}}
 
 
-def apply_title_box_topgap(section_roots):
-    """제목 박스(첫 □ 이전 표)의 선두 빈 패딩 행을 제거한다(R022 — 사용자 확정 '26.7.24).
-    kordoc body_title_box는 제목 행 위아래로 빈 행을 넣는데, 상단 행이 제목표 위 여백으로
-    보이는 결함의 후처리. 첫 행의 모든 셀 문단이 빈 텍스트일 때만 제거하고, rowCnt·표 높이·
-    후속 행 rowAddr을 함께 보정한다."""
-    removed = 0
+def ensure_linespacing_parapr(header_root, base_id, percent, cache):
+    """base_id paraPr의 lineSpacing value만 percent로 바꾼 복제본 id를 반환한다."""
+    key = (base_id, percent)
+    if key in cache:
+        return cache[key]
+    paraprops = header_root.find(f".//{qn('hh', 'paraProperties')}")
+    base = None
+    for pp in paraprops.findall(qn("hh", "paraPr")):
+        if pp.get("id") == base_id:
+            base = pp
+            break
+    if base is None:
+        cache[key] = base_id
+        return base_id
+    ls = base.find(qn("hh", "lineSpacing"))
+    if ls is not None and ls.get("value") == str(percent):
+        cache[key] = base_id
+        return base_id
+    new_pp = copy.deepcopy(base)
+    max_id = max(int(pp.get("id")) for pp in paraprops.findall(qn("hh", "paraPr")))
+    new_id = str(max_id + 1)
+    new_pp.set("id", new_id)
+    nls = new_pp.find(qn("hh", "lineSpacing"))
+    if nls is not None:
+        nls.set("value", str(percent))
+    paraprops.append(new_pp)
+    paraprops.set("itemCnt", str(len(paraprops.findall(qn("hh", "paraPr")))))
+    cache[key] = new_id
+    return new_id
+
+
+def apply_title_box_topgap(header_root, section_roots):
+    """제목 박스(첫 □ 이전 표) 위 여백을 제거한다(R022 개정 '26.7.24 — 행 삭제 금지).
+    양식 실측(20260722건): 제목표는 3행 원형이고 상단 얇은 행(3.8pt)은 그라데이션 배경
+    밴드이므로 유지해야 한다. 여백의 실원인은 앵커 문단(treatAsChar 표를 담은 문단)의
+    줄간격 160%가 표 높이의 60%를 여백으로 벌리는 것 — 앵커 문단 줄간격을 100%로 치환하고
+    표 outMargin top을 0으로 조인다."""
+    p_tag = qn("hp", "p")
+    cache = {}
+    anchors_fixed = 0
+    outmargins_fixed = 0
+    title_ids = set()
     for tbl, is_title in _iter_content_tables(section_roots):
         if not is_title:
             continue
-        rows = tbl.findall(qn("hp", "tr"))
-        if len(rows) < 2:
-            continue
-        first = rows[0]
-        cells = first.findall(qn("hp", "tc"))
-        if not cells:
-            continue
-        if any(para_text(p).strip()
-               for tc in cells
-               for p in tc.iter(qn("hp", "p"))):
-            continue
-        row_height = max(
-            (int(tc.find(qn("hp", "cellSz")).get("height", "0"))
-             for tc in cells if tc.find(qn("hp", "cellSz")) is not None),
-            default=0,
-        )
-        tbl.remove(first)
-        removed += 1
-        if tbl.get("rowCnt") is not None:
-            tbl.set("rowCnt", str(max(0, int(tbl.get("rowCnt")) - 1)))
-        sz = tbl.find(qn("hp", "sz"))
-        if sz is not None and sz.get("height") is not None:
-            sz.set("height", str(max(0, int(sz.get("height")) - row_height)))
-        for tr in tbl.findall(qn("hp", "tr")):
-            for tc in tr.findall(qn("hp", "tc")):
-                addr = tc.find(qn("hp", "cellAddr"))
-                if addr is not None and addr.get("rowAddr") is not None:
-                    addr.set("rowAddr", str(max(0, int(addr.get("rowAddr")) - 1)))
-    return {"rows_removed": removed}
+        title_ids.add(id(tbl))
+        out = tbl.find(qn("hp", "outMargin"))
+        if out is not None and out.get("top") not in (None, "0"):
+            out.set("top", "0")
+            outmargins_fixed += 1
+    if not title_ids:
+        return {"anchors_fixed": 0, "outmargins_fixed": 0}
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag:
+                continue
+            has_title = any(
+                id(tbl) in title_ids
+                for run in child.findall(qn("hp", "run"))
+                for tbl in run.findall(qn("hp", "tbl"))
+            )
+            if not has_title:
+                continue
+            base_id = child.get("paraPrIDRef")
+            if base_id is None:
+                continue
+            new_id = ensure_linespacing_parapr(header_root, base_id, 100, cache)
+            if new_id != base_id:
+                child.set("paraPrIDRef", new_id)
+                anchors_fixed += 1
+    return {"anchors_fixed": anchors_fixed, "outmargins_fixed": outmargins_fixed}
 
 
 def apply_caption_table_font(header_root, section_roots, pt=12):
@@ -965,9 +999,9 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
         if tbr["fills_replaced"] > 0:
             any_change = True
 
-        tgr = apply_title_box_topgap(list(section_roots.values()))
+        tgr = apply_title_box_topgap(header_root, list(section_roots.values()))
         summary["title_box_topgap"] = tgr
-        if tgr["rows_removed"] > 0:
+        if tgr["anchors_fixed"] or tgr["outmargins_fixed"]:
             any_target_found = True
             any_change = True
 

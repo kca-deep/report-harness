@@ -768,26 +768,34 @@ TITLE_BOX_SECTION = '''<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 '''
 
 
-def test_title_box_topgap_removes_empty_first_row(tmp_path):
+def test_title_box_topgap_keeps_rows_fixes_linespacing(tmp_path):
     p = tmp_path / "tg.hwpx"
     build_hwpx(str(p), section_xml=TITLE_BOX_SECTION)
     summary = ph.process_file(str(p), star=False, spacing=True)
-    assert summary["title_box_topgap"]["rows_removed"] == 1
+    assert summary["title_box_topgap"]["anchors_fixed"] == 1
     with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
         sec = ET.fromstring(z.read("Contents/section0.xml"))
+    # 행 삭제 금지: 그라데이션 밴드 행(3행 원형) 유지
     tbl = next(t for t in sec.iter(ph.qn("hp", "tbl")) if t.get("id") == "1")
-    rows = tbl.findall(ph.qn("hp", "tr"))
-    assert tbl.get("rowCnt") == "2" and len(rows) == 2
-    assert tbl.find(ph.qn("hp", "sz")).get("height") == str(3614 - 382)
-    # 첫 행이 제목 행이 되고 rowAddr 재배열
-    first_texts = [t.text for t in rows[0].iter(ph.qn("hp", "t"))]
-    assert "제목 텍스트" in first_texts
-    addrs = [tc.find(ph.qn("hp", "cellAddr")).get("rowAddr")
-             for tr in rows for tc in tr.findall(ph.qn("hp", "tc"))]
-    assert addrs == ["0", "1"]
-    # 본문 콘텐츠 표(id=2)는 건드리지 않음
-    tbl2 = next(t for t in sec.iter(ph.qn("hp", "tbl")) if t.get("id") == "2")
-    assert tbl2.get("rowCnt") == "1"
+    assert tbl.get("rowCnt") == "3" and len(tbl.findall(ph.qn("hp", "tr"))) == 3
+    # 앵커 문단 줄간격 100% 치환
+    anchor = next(c for c in sec if c.tag == ph.qn("hp", "p")
+                  and any(r.find(ph.qn("hp", "tbl")) is not None
+                          and r.find(ph.qn("hp", "tbl")).get("id") == "1"
+                          for r in c.findall(ph.qn("hp", "run"))))
+    ls_by_id = {}
+    for pp in hdr.iter(ph.qn("hh", "paraPr")):
+        ls = pp.find(ph.qn("hh", "lineSpacing"))
+        if ls is not None:
+            ls_by_id[pp.get("id")] = ls.get("value")
+    assert ls_by_id[anchor.get("paraPrIDRef")] == "100"
+    # 본문 콘텐츠 표(id=2) 앵커는 줄간격 유지(캡션·표 센터 paraPr일 뿐 160 유지)
+    tbl2_anchor = next(c for c in sec if c.tag == ph.qn("hp", "p")
+                       and any(r.find(ph.qn("hp", "tbl")) is not None
+                               and r.find(ph.qn("hp", "tbl")).get("id") == "2"
+                               for r in c.findall(ph.qn("hp", "run"))))
+    assert ls_by_id[tbl2_anchor.get("paraPrIDRef")] == "160"
 
 
 def test_title_box_topgap_idempotent(tmp_path):
@@ -795,7 +803,24 @@ def test_title_box_topgap_idempotent(tmp_path):
     build_hwpx(str(p), section_xml=TITLE_BOX_SECTION)
     ph.process_file(str(p), star=False, spacing=True)
     summary2 = ph.process_file(str(p), star=False, spacing=True)
-    assert summary2["title_box_topgap"]["rows_removed"] == 0
+    assert summary2["title_box_topgap"]["anchors_fixed"] == 0
+    assert summary2["title_box_topgap"]["outmargins_fixed"] == 0
+
+
+def test_title_box_topgap_zeroes_outmargin_top(tmp_path):
+    section = TITLE_BOX_SECTION.replace(
+        '<hp:tbl id="1" rowCnt="3" colCnt="1" borderFillIDRef="1">',
+        '<hp:tbl id="1" rowCnt="3" colCnt="1" borderFillIDRef="1">'
+        '<hp:outMargin left="283" right="283" top="283" bottom="283"/>')
+    p = tmp_path / "tg3.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["title_box_topgap"]["outmargins_fixed"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    tbl = next(t for t in sec.iter(ph.qn("hp", "tbl")) if t.get("id") == "1")
+    out = tbl.find(ph.qn("hp", "outMargin"))
+    assert out.get("top") == "0" and out.get("bottom") == "283"
 
 
 def test_caption_and_cell_font_12pt(tmp_path):

@@ -88,6 +88,8 @@
 - 발신 줄 정렬은 **오른쪽(우측)** 확정(paraShapeID=17, 속성1 정렬비트=2) — R012(`<right>` 래핑).
 - `skills/report-pipeline/scripts/postprocess_hwpx.py --spacing`이 이 표의 확정값으로 kordoc
   `generate_document` 산출물(스페이서 문단이 없는 상태)에 스페이서 문단을 삽입해 재현한다(R013).
-- ☞ 결론 유도 기호의 인접 간격은 ※·＊ 준용 3pt(R025). 제목 박스 상단 빈 패딩 행은 postprocess가
-  제거한다(R022, '26.7.24 사용자 확정 — kordoc body_title_box의 선두 빈 행이 제목표 위 여백으로 보임).
+- ☞ 결론 유도 기호의 인접 간격은 ※·＊ 준용 3pt(R025). 제목 박스 상단여백은 postprocess가
+  앵커 문단 줄간격 100% 치환 + 표 outMargin top 0으로 제거한다(R022 개정 '26.7.24) —
+  **상단 얇은 행(3.8pt)은 양식 원형(1열×3행)의 그라데이션 배경 밴드이므로 삭제 금지**
+  (양식 OLE 실측: 0행 3.8pt 그라데이션 채움·1행 제목·2행 3.8pt 4변 실선 밑줄).
 

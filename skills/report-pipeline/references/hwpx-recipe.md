@@ -154,9 +154,9 @@ python3 skills/report-pipeline/scripts/postprocess_hwpx.py \
   줄인 빈 문단)으로 재현한다. 전환 지점에 이미 빈 문단이 있으면 그 charPr 높이를 치환하고,
   없으면(= kordoc `generate_document` 산출물의 표준 상태) 새 스페이서 문단을 삽입한다. 확정값은
   format-profile.kca.md §7 참조.
-- **제목 박스 상단 패딩 제거 (R022)**: `--spacing` 묶음이 제목 박스(첫 □ 이전 표)의 선두 빈
-  패딩 행을 삭제하고 rowCnt·표 높이·rowAddr을 보정한다 — kordoc `body_title_box`가 넣는 빈
-  행이 제목표 위 여백으로 보이는 결함의 후처리.
+- **제목 박스 상단여백 제거 (R022)**: `--spacing` 묶음이 제목 박스(첫 □ 이전 표) 앵커 문단의
+  줄간격을 100%로 치환하고 표 outMargin top을 0으로 조인다. **상단 얇은 행은 양식 원형의
+  그라데이션 배경 밴드이므로 행 삭제 금지**(행 삭제 시 그라데이션 소실 — 20260724건 회귀 확정).
 - **표 캡션·셀 12pt (R023)**: 캡션 문단과 본문 콘텐츠 표(제목 박스 제외) 셀 문단의 charPr을
   폰트 유지·높이 1200(12pt)으로 치환한다.
 - **□ 절 제목 볼드 (R024)**: dae 문단 run charPr에 `<hh:bold/>` 변형을 배정한다.
