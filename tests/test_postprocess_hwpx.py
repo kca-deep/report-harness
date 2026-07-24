@@ -894,3 +894,74 @@ def test_classify_arrow():
     p = ET.fromstring('<hp:p xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph" paraPrIDRef="0"><hp:run charPrIDRef="0"><hp:t>☞ 귀결</hp:t></hp:run></hp:p>')
     assert ph.classify(p) == "arrow"
     assert ph.TRANSITIONS[("cham", "arrow")] == ("cham_to_arrow", 300)
+
+
+BANNER_SECTION = '''<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 본문 절</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 요지</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:tbl id="9" rowCnt="1" colCnt="3" borderFillIDRef="1"><hp:tr><hp:tc borderFillIDRef="1"><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>붙 임</hp:t></hp:run></hp:p></hp:subList><hp:cellAddr colAddr="0" rowAddr="0"/><hp:cellSz width="5000" height="382"/></hp:tc><hp:tc borderFillIDRef="1"><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t/></hp:run></hp:p></hp:subList><hp:cellAddr colAddr="1" rowAddr="0"/><hp:cellSz width="1000" height="382"/></hp:tc><hp:tc borderFillIDRef="1"><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>검토 근거 상세</hp:t></hp:run></hp:p></hp:subList><hp:cellAddr colAddr="2" rowAddr="0"/><hp:cellSz width="40000" height="382"/></hp:tc></hp:tr></hp:tbl></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 붙임 절</hp:t></hp:run></hp:p>
+</hs:sec>
+'''
+
+HEADER_WITH_HEADLINE = HEADER_XML.replace(
+    '<hh:font id="1" face="맑은고딕" type="TTF" isEmbedded="0"/>',
+    '<hh:font id="1" face="맑은고딕" type="TTF" isEmbedded="0"/>\n        '
+    '<hh:font id="2" face="HY헤드라인M" type="TTF" isEmbedded="0"/>')
+
+
+def test_annex_banner_pagebreak_and_font(tmp_path):
+    p = tmp_path / "bn.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_WITH_HEADLINE, section_xml=BANNER_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    abr = summary["annex_banner"]
+    assert abr["banners"] == 1 and abr["cell_runs_changed"] >= 2
+    # R023이 배너 셀을 12pt로 낮추지 않아야 한다
+    assert summary["caption_table_font"]["cell_runs_changed"] == 0
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    # 앵커 문단 pageBreakBefore=1
+    anchor = next(c for c in sec if c.tag == ph.qn("hp", "p")
+                  and any(r.find(ph.qn("hp", "tbl")) is not None
+                          for r in c.findall(ph.qn("hp", "run"))))
+    pb = {}
+    fonts_h = {}
+    for pp in hdr.iter(ph.qn("hh", "paraPr")):
+        bs = pp.find(ph.qn("hh", "breakSetting"))
+        pb[pp.get("id")] = bs.get("pageBreakBefore") if bs is not None else None
+    assert pb[anchor.get("paraPrIDRef")] == "1"
+    # 배너 셀 charPr = HY헤드라인M(2)·1600
+    info = {}
+    for cp in hdr.iter(ph.qn("hh", "charPr")):
+        fr = cp.find(ph.qn("hh", "fontRef"))
+        info[cp.get("id")] = (cp.get("height"), fr.get("hangul") if fr is not None else None)
+    tbl = next(t for t in sec.iter(ph.qn("hp", "tbl")))
+    for run in tbl.iter(ph.qn("hp", "run")):
+        assert info[run.get("charPrIDRef")] == ("1600", "2")
+
+
+def test_annex_banner_idempotent_and_no_font_noop(tmp_path):
+    p = tmp_path / "bn2.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_WITH_HEADLINE, section_xml=BANNER_SECTION)
+    ph.process_file(str(p), star=False, spacing=True)
+    s2 = ph.process_file(str(p), star=False, spacing=True)
+    assert s2["annex_banner"]["cell_runs_changed"] == 0
+    # HY헤드라인M 폰트가 없는 문서에서는 no-op (배너 검출은 되나 치환 0)
+    p3 = tmp_path / "bn3.hwpx"
+    build_hwpx(str(p3), section_xml=BANNER_SECTION)
+    s3 = ph.process_file(str(p3), star=False, spacing=True)
+    assert s3["annex_banner"]["banners"] == 1
+    assert s3["annex_banner"]["cell_runs_changed"] == 0
+
+
+def test_is_banner_table_rejects_content_tables():
+    tbl = ET.fromstring(
+        '<hp:tbl xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph" rowCnt="1" colCnt="3">'
+        '<hp:tr>'
+        '<hp:tc><hp:subList><hp:p><hp:run><hp:t>구 분</hp:t></hp:run></hp:p></hp:subList></hp:tc>'
+        '<hp:tc><hp:subList><hp:p><hp:run><hp:t>a</hp:t></hp:run></hp:p></hp:subList></hp:tc>'
+        '<hp:tc><hp:subList><hp:p><hp:run><hp:t>b</hp:t></hp:run></hp:p></hp:subList></hp:tc>'
+        '</hp:tr></hp:tbl>')
+    assert not ph._is_banner_table(tbl)

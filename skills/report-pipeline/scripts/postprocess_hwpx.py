@@ -542,9 +542,24 @@ def apply_title_box_topgap(header_root, section_roots):
     return {"anchors_fixed": anchors_fixed, "outmargins_fixed": outmargins_fixed}
 
 
+BANNER_LABEL_RE = re.compile(r"^(붙\s*임\s*\d*|참고\s*\d*)$")
+
+
+def _is_banner_table(tbl):
+    """붙임·참고 배너 표(1행 3열, 첫 셀이 '붙 임'/'붙임 N'/'참고N') 판정 (R009·R027)."""
+    rows = tbl.findall(qn("hp", "tr"))
+    if len(rows) != 1:
+        return False
+    cells = rows[0].findall(qn("hp", "tc"))
+    if len(cells) != 3:
+        return False
+    first_texts = [t.text or "" for t in cells[0].iter(qn("hp", "t"))]
+    return bool(BANNER_LABEL_RE.match("".join(first_texts).strip()))
+
+
 def apply_caption_table_font(header_root, section_roots, pt=12):
-    """표 캡션 문단과 본문 콘텐츠 표(제목 박스 제외) 셀 문단의 charPr 크기를 pt로 치환한다
-    (R023 — 사용자 확정 '26.7.24). 폰트는 유지하고 높이만 바꾼다."""
+    """표 캡션 문단과 본문 콘텐츠 표(제목 박스·붙임/참고 배너 제외) 셀 문단의 charPr 크기를
+    pt로 치환한다(R023 — 사용자 확정 '26.7.24). 폰트는 유지하고 높이만 바꾼다."""
     height = int(round(pt * 100))
     p_tag = qn("hp", "p")
     cache = {}
@@ -563,7 +578,7 @@ def apply_caption_table_font(header_root, section_roots, pt=12):
                     run.set("charPrIDRef", new_id)
                     caption_runs += 1
     for tbl, is_title in _iter_content_tables(section_roots):
-        if is_title:
+        if is_title or _is_banner_table(tbl):
             continue
         for cell_p in tbl.iter(p_tag):
             for run in cell_p.findall(qn("hp", "run")):
@@ -576,6 +591,117 @@ def apply_caption_table_font(header_root, section_roots, pt=12):
                     cell_runs += 1
     return {"height": height, "caption_runs_changed": caption_runs,
             "cell_runs_changed": cell_runs}
+
+
+def ensure_charpr_font_size(header_root, base_id, face, height, cache):
+    """base_id charPr을 전 lang fontRef=face 폰트 id·height로 바꾼 복제본 id를 반환한다."""
+    key = (base_id, face, height)
+    if key in cache:
+        return cache[key]
+    fonts = _hangul_fontfaces(header_root)
+    font_id = next((fid for fid, f in fonts.items() if f == face), None)
+    if font_id is None:
+        cache[key] = base_id
+        return base_id
+    charprops = header_root.find(f".//{qn('hh', 'charProperties')}")
+    base = None
+    for cp in charprops.findall(qn("hh", "charPr")):
+        if cp.get("id") == base_id:
+            base = cp
+            break
+    if base is None:
+        cache[key] = base_id
+        return base_id
+    fr = base.find(qn("hh", "fontRef"))
+    if (base.get("height") == str(height) and fr is not None
+            and fr.get("hangul") == font_id):
+        cache[key] = base_id
+        return base_id
+    new_cp = copy.deepcopy(base)
+    max_id = max(int(cp.get("id")) for cp in charprops.findall(qn("hh", "charPr")))
+    new_id = str(max_id + 1)
+    new_cp.set("id", new_id)
+    new_cp.set("height", str(height))
+    nfr = new_cp.find(qn("hh", "fontRef"))
+    if nfr is not None:
+        for lang in ("hangul", "latin", "hanja", "japanese", "other", "symbol", "user"):
+            if nfr.get(lang) is not None:
+                nfr.set(lang, font_id)
+    charprops.append(new_cp)
+    charprops.set("itemCnt", str(int(charprops.get("itemCnt", "0")) + 1))
+    cache[key] = new_id
+    return new_id
+
+
+def ensure_pagebreak_parapr(header_root, base_id, cache):
+    """base_id paraPr의 breakSetting pageBreakBefore="1" 복제본 id를 반환한다."""
+    if base_id in cache:
+        return cache[base_id]
+    paraprops = header_root.find(f".//{qn('hh', 'paraProperties')}")
+    base = None
+    for pp in paraprops.findall(qn("hh", "paraPr")):
+        if pp.get("id") == base_id:
+            base = pp
+            break
+    if base is None:
+        cache[base_id] = base_id
+        return base_id
+    bs = base.find(qn("hh", "breakSetting"))
+    if bs is not None and bs.get("pageBreakBefore") == "1":
+        cache[base_id] = base_id
+        return base_id
+    new_pp = copy.deepcopy(base)
+    max_id = max(int(pp.get("id")) for pp in paraprops.findall(qn("hh", "paraPr")))
+    new_id = str(max_id + 1)
+    new_pp.set("id", new_id)
+    nbs = new_pp.find(qn("hh", "breakSetting"))
+    if nbs is None:
+        nbs = ET.SubElement(new_pp, qn("hh", "breakSetting"))
+    nbs.set("pageBreakBefore", "1")
+    paraprops.append(new_pp)
+    paraprops.set("itemCnt", str(len(paraprops.findall(qn("hh", "paraPr")))))
+    cache[base_id] = new_id
+    return new_id
+
+
+def apply_annex_banner(header_root, section_roots):
+    """붙임·참고 배너를 양식 참고 블록 정합으로 처리한다(R027 — 사용자 확정 '26.7.24):
+    ① 배너 앵커 문단 pageBreakBefore=1 (별도 페이지 시작)
+    ② 배너 셀 글자 HY헤드라인M 16pt (양식 실측: 참고1 배너 = HY헤드라인M 16Point)."""
+    p_tag = qn("hp", "p")
+    char_cache = {}
+    pb_cache = {}
+    banners = 0
+    cell_runs = 0
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag:
+                continue
+            banner_tbls = [
+                tbl for run in child.findall(qn("hp", "run"))
+                for tbl in run.findall(qn("hp", "tbl"))
+                if _is_banner_table(tbl)
+            ]
+            if not banner_tbls:
+                continue
+            banners += len(banner_tbls)
+            base_pp = child.get("paraPrIDRef")
+            if base_pp is not None:
+                new_pp = ensure_pagebreak_parapr(header_root, base_pp, pb_cache)
+                if new_pp != base_pp:
+                    child.set("paraPrIDRef", new_pp)
+            for tbl in banner_tbls:
+                for cell_p in tbl.iter(p_tag):
+                    for run in cell_p.findall(qn("hp", "run")):
+                        base_id = run.get("charPrIDRef")
+                        if base_id is None:
+                            continue
+                        new_id = ensure_charpr_font_size(
+                            header_root, base_id, "HY헤드라인M", 1600, char_cache)
+                        if new_id != base_id:
+                            run.set("charPrIDRef", new_id)
+                            cell_runs += 1
+    return {"banners": banners, "cell_runs_changed": cell_runs}
 
 
 def ensure_charpr_bold(header_root, base_id, cache):
@@ -1016,6 +1142,13 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
         if dbr["dae_found"] > 0:
             any_target_found = True
         if dbr["runs_changed"] > 0:
+            any_change = True
+
+        abr = apply_annex_banner(header_root, list(section_roots.values()))
+        summary["annex_banner"] = abr
+        if abr["banners"] > 0:
+            any_target_found = True
+        if abr["cell_runs_changed"] > 0:
             any_change = True
 
     if sender_size is not None:
