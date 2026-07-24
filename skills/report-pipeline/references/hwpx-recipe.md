@@ -52,9 +52,11 @@ mcp__kordoc__extract_profile(
 ```
 
 도식 마커(`도식: {패턴ID}`)가 본문에 있으면, `generate_document` 호출 전에 md 텍스트 단계에서
-치환한다 — `diagram-pool.md` 판정표로 고른 패턴ID의 원형 표 구조를 도식 Pool 번들 hwpx에서
-`parse_document`로 추출해 슬롯을 채운 뒤, GFM 표로 재구성해 `40_prepared.md`의 마커 자리에
-병합한다(md-profile의 표 규격 안에서 조립).
+치환한다 — `diagram-pool.md` 판정표로 고른 패턴ID의 원형 표 구조를 도식 Pool hwpx
+(`harness_config` 출력의 `assets_dir` 아래 `도식Pool-경량.hwpx` 번들 사본, 로컬 원본 form/이
+있으면 그것도 가)에서 `parse_document`로 추출해 슬롯을 채운 뒤, GFM 표로 재구성해
+`40_prepared.md`의 마커 자리에 병합한다(md-profile의 표 규격 안에서 조립). 원형 hwpx가 어디에도
+없으면 diagram-pool.md 판정표만으로 GFM 표를 직접 재구성한다 — 치환은 graceful degrade 대상.
 
 **변환 입력 문법 (R007·R016)**: ㅇ 계층의 괄호 리드는 `**(한 계)**`처럼 볼드 래핑해 전달한다(R016).
  generate_document에는 리터럴 개조식 기호가 아니라 **리스트 깊이

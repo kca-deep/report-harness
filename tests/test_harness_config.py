@@ -6,8 +6,9 @@ def test_defaults_without_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     cfg = hc.load_config(path=tmp_path / "nope.json")
     assert cfg["reports_dir"] == pathlib.Path.cwd() / "reports"
-    assert str(cfg["state_dir"]).endswith(".claude/report-harness-state")
+    assert cfg["state_dir"] == pathlib.Path.cwd() / ".report-harness"
     assert cfg["knowledge_vault"] is None and cfg["template_hwpx"] is None
+    assert cfg["assets_dir"].name == "assets"
 
 def test_config_file_overrides(tmp_path):
     p = tmp_path / "c.json"

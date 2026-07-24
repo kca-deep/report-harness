@@ -1,6 +1,8 @@
 # KCA 표준보고서 양식 프로파일 (번들 시드)
 
 > 출처: `form/250609_(표준보고서) KCA 문서 양식.hwp` (2026-07-22 kordoc 분석).
+> **번들 사본**: `skills/report-pipeline/assets/250609_표준보고서_KCA_문서양식.hwp` (64KB 원본
+> 그대로 — 배포 환경에서 form/ 부재 시 실측 재검증·template 참조용).
 > 이 파일은 KCA 환경의 기본 format-profile 시드다. 다른 기관 양식이 제공되면 §6-0 추출 절차로
 > `{state_dir}/format-profile.{기관}.md`를 생성해 이 시드 대신 사용한다.
 
