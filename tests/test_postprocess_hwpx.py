@@ -978,13 +978,13 @@ def test_annex_banner_cell_styles(tmp_path):
     fills = {bf.get("id"): bf for bf in hdr.iter(ph.qn("hh", "borderFill"))}
     tbl = next(t for t in sec.iter(ph.qn("hp", "tbl")))
     cells = tbl.find(ph.qn("hp", "tr")).findall(ph.qn("hp", "tc"))
-    # 라벨 셀: 4변 SOLID 0.5mm #60171B + 채움 #632D2B
+    # 라벨 셀: 4변 SOLID 0.5mm #1B1760 + 채움 #2B2D63
     bf0 = fills[cells[0].get("borderFillIDRef")]
     for side in ("left", "right", "top", "bottom"):
         el = bf0.find(ph.qn("hh", f"{side}Border"))
-        assert (el.get("type"), el.get("width"), el.get("color")) == ("SOLID", "0.5 mm", "#60171B")
+        assert (el.get("type"), el.get("width"), el.get("color")) == ("SOLID", "0.5 mm", "#1B1760")
     brush = bf0.find(f"{ph.qn('hc', 'fillBrush')}/{ph.qn('hc', 'winBrush')}")
-    assert brush.get("faceColor") == "#632D2B"
+    assert brush.get("faceColor") == "#2B2D63"
     # 스페이서: 좌변만 SOLID, 채움 없음
     bf1 = fills[cells[1].get("borderFillIDRef")]
     assert bf1.find(ph.qn("hh", "leftBorder")).get("type") == "SOLID"

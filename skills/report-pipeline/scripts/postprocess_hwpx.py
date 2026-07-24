@@ -664,23 +664,26 @@ def ensure_pagebreak_parapr(header_root, base_id, cache):
     return new_id
 
 
-# 양식 '참고1' 배너 셀 스타일 실측 (250609 양식 hwp OLE 디코딩, '26.7.24 확정 —
-# BORDER_FILL 1-based 매핑, 교차검증: 본문 표 헤더 bf14=#EEEBD2 음영 일치):
-#   라벨 셀(bf17): 4변 SOLID 0.5mm #60171B + 채움 #632D2B, 글자 흰색 HY헤드라인M 16pt
-#   스페이서(bf7): 좌변만 SOLID 0.5mm #60171B, 채움 없음
-#   제목 셀(bf8):  상·하변 SOLID 0.5mm #60171B, 채움 없음, 글자 HY헤드라인M 16pt
-#   행 높이 28.3pt(2830)
-BANNER_LINE = ("SOLID", "0.5 mm", "#60171B")
+# 양식 '참고1' 배너 셀 스타일 실측 (250609 양식 hwp OLE 디코딩, '26.7.24 재실측 확정 —
+# COLORREF는 0x00BBGGRR(리틀엔디언)이므로 저장 hex를 그대로 읽으면 R/B가 뒤집힌다.
+# 최초 실측('26.7.24 오전)이 이 바이트 순서를 놓쳐 #60171B/#632D2B(적갈)로 오기록했고,
+# 실제 양식은 남색 계열이다. 교차검증: 본문 표 헤더 bf14=#D2EBEE(연하늘) 음영 일치.
+#   라벨 셀(bf17): 4변 SOLID 0.5mm #1B1760 + 채움 #2B2D63, 글자 흰색 HY헤드라인M 16pt
+#   스페이서(bf7): 좌변만 SOLID 0.5mm #1B1760, 채움 없음
+#   제목 셀(bf8):  상·하변 SOLID 0.5mm #1B1760, 채움 없음, 글자 HY헤드라인M 16pt
+#   행 높이 28.3pt(2830) · 셀 폭 라벨 5968(21.1mm)/스페이서 565(2.0mm)/제목 잔여
+BANNER_LINE = ("SOLID", "0.5 mm", "#1B1760")
 BANNER_NONE = ("NONE", "0.1 mm", "#000000")
 BANNER_CELL_SPECS = [
     {"borders": {"left": BANNER_LINE, "right": BANNER_LINE,
-                 "top": BANNER_LINE, "bottom": BANNER_LINE}, "fill": "#632D2B"},
+                 "top": BANNER_LINE, "bottom": BANNER_LINE}, "fill": "#2B2D63"},
     {"borders": {"left": BANNER_LINE, "right": BANNER_NONE,
                  "top": BANNER_NONE, "bottom": BANNER_NONE}, "fill": None},
     {"borders": {"left": BANNER_NONE, "right": BANNER_NONE,
                  "top": BANNER_LINE, "bottom": BANNER_LINE}, "fill": None},
 ]
 BANNER_ROW_HEIGHT = 2830
+BANNER_CELL_WIDTHS = [5968, 565]  # 라벨·스페이서 실측 폭, 제목 셀은 표 폭 잔여
 
 
 def _borderfill_matches(bf, spec):
@@ -760,7 +763,7 @@ def apply_annex_banner(header_root, section_roots):
     ① 배너 앵커 문단 pageBreakBefore=1 (별도 페이지 시작)
     ② 배너 셀 글자 HY헤드라인M 16pt (라벨 셀은 흰색)
     ③ 셀별 테두리·채움을 양식 '참고1' 실측값으로 배정 (BANNER_CELL_SPECS)
-    ④ 행 높이 28.3pt."""
+    ④ 행 높이 28.3pt · 셀 폭 라벨 5968/스페이서 565/제목 잔여 (BANNER_CELL_WIDTHS)."""
     p_tag = qn("hp", "p")
     char_cache = {}
     color_cache = {}
@@ -797,6 +800,12 @@ def apply_annex_banner(header_root, section_roots):
                 sz = tbl.find(qn("hp", "sz"))
                 if sz is not None and sz.get("height") is not None:
                     sz.set("height", str(BANNER_ROW_HEIGHT))
+                total_w = sum(
+                    int(tc.find(qn("hp", "cellSz")).get("width", "0"))
+                    for tc in cells_sorted if tc.find(qn("hp", "cellSz")) is not None)
+                cell_widths = None
+                if len(cells_sorted) == 3 and total_w > sum(BANNER_CELL_WIDTHS):
+                    cell_widths = BANNER_CELL_WIDTHS + [total_w - sum(BANNER_CELL_WIDTHS)]
                 for idx, tc in enumerate(cells_sorted):
                     spec = BANNER_CELL_SPECS[min(idx, len(BANNER_CELL_SPECS) - 1)]
                     fill_id = ensure_banner_fill(header_root, spec, fill_cache)
@@ -806,6 +815,8 @@ def apply_annex_banner(header_root, section_roots):
                     csz = tc.find(qn("hp", "cellSz"))
                     if csz is not None:
                         csz.set("height", str(BANNER_ROW_HEIGHT))
+                        if cell_widths is not None:
+                            csz.set("width", str(cell_widths[idx]))
                     for cell_p in tc.iter(p_tag):
                         for run in cell_p.findall(qn("hp", "run")):
                             base_id = run.get("charPrIDRef")
