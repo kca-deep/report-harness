@@ -664,15 +664,111 @@ def ensure_pagebreak_parapr(header_root, base_id, cache):
     return new_id
 
 
+# 양식 '참고1' 배너 셀 스타일 실측 (250609 양식 hwp OLE 디코딩, '26.7.24 확정 —
+# BORDER_FILL 1-based 매핑, 교차검증: 본문 표 헤더 bf14=#EEEBD2 음영 일치):
+#   라벨 셀(bf17): 4변 SOLID 0.5mm #60171B + 채움 #632D2B, 글자 흰색 HY헤드라인M 16pt
+#   스페이서(bf7): 좌변만 SOLID 0.5mm #60171B, 채움 없음
+#   제목 셀(bf8):  상·하변 SOLID 0.5mm #60171B, 채움 없음, 글자 HY헤드라인M 16pt
+#   행 높이 28.3pt(2830)
+BANNER_LINE = ("SOLID", "0.5 mm", "#60171B")
+BANNER_NONE = ("NONE", "0.1 mm", "#000000")
+BANNER_CELL_SPECS = [
+    {"borders": {"left": BANNER_LINE, "right": BANNER_LINE,
+                 "top": BANNER_LINE, "bottom": BANNER_LINE}, "fill": "#632D2B"},
+    {"borders": {"left": BANNER_LINE, "right": BANNER_NONE,
+                 "top": BANNER_NONE, "bottom": BANNER_NONE}, "fill": None},
+    {"borders": {"left": BANNER_NONE, "right": BANNER_NONE,
+                 "top": BANNER_LINE, "bottom": BANNER_LINE}, "fill": None},
+]
+BANNER_ROW_HEIGHT = 2830
+
+
+def _borderfill_matches(bf, spec):
+    for side, (btype, bwidth, bcolor) in spec["borders"].items():
+        el = bf.find(qn("hh", f"{side}Border"))
+        if el is None or el.get("type") != btype:
+            return False
+        if btype != "NONE" and (el.get("width") != bwidth or el.get("color") != bcolor):
+            return False
+    brush = bf.find(f"{qn('hc', 'fillBrush')}/{qn('hc', 'winBrush')}")
+    if spec["fill"] is None:
+        return brush is None
+    return brush is not None and brush.get("faceColor") == spec["fill"]
+
+
+def ensure_banner_fill(header_root, spec, cache):
+    """spec(4변 테두리 + 채움색)에 맞는 borderFill id를 재사용 또는 복제 생성한다."""
+    key = str(spec)
+    if key in cache:
+        return cache[key]
+    borderfills = header_root.find(f".//{qn('hh', 'borderFills')}")
+    for bf in borderfills.findall(qn("hh", "borderFill")):
+        if _borderfill_matches(bf, spec):
+            cache[key] = bf.get("id")
+            return bf.get("id")
+    template = borderfills.find(qn("hh", "borderFill"))
+    new_bf = copy.deepcopy(template)
+    max_id = max(int(bf.get("id")) for bf in borderfills.findall(qn("hh", "borderFill")))
+    new_id = str(max_id + 1)
+    new_bf.set("id", new_id)
+    for side, (btype, bwidth, bcolor) in spec["borders"].items():
+        el = new_bf.find(qn("hh", f"{side}Border"))
+        if el is not None:
+            el.set("type", btype)
+            el.set("width", bwidth)
+            el.set("color", bcolor)
+    old_brush = new_bf.find(qn("hc", "fillBrush"))
+    if old_brush is not None:
+        new_bf.remove(old_brush)
+    if spec["fill"] is not None:
+        brush = ET.SubElement(new_bf, qn("hc", "fillBrush"))
+        ET.SubElement(brush, qn("hc", "winBrush"),
+                      {"faceColor": spec["fill"], "hatchColor": "#999999", "alpha": "0"})
+    borderfills.append(new_bf)
+    borderfills.set("itemCnt", str(int(borderfills.get("itemCnt", "0")) + 1))
+    cache[key] = new_id
+    return new_id
+
+
+def ensure_charpr_color(header_root, base_id, color, cache):
+    """base_id charPr의 textColor만 color로 바꾼 복제본 id를 반환한다."""
+    key = (base_id, color)
+    if key in cache:
+        return cache[key]
+    charprops = header_root.find(f".//{qn('hh', 'charProperties')}")
+    base = None
+    for cp in charprops.findall(qn("hh", "charPr")):
+        if cp.get("id") == base_id:
+            base = cp
+            break
+    if base is None or base.get("textColor") == color:
+        cache[key] = base_id
+        return base_id
+    new_cp = copy.deepcopy(base)
+    max_id = max(int(cp.get("id")) for cp in charprops.findall(qn("hh", "charPr")))
+    new_id = str(max_id + 1)
+    new_cp.set("id", new_id)
+    new_cp.set("textColor", color)
+    charprops.append(new_cp)
+    charprops.set("itemCnt", str(int(charprops.get("itemCnt", "0")) + 1))
+    cache[key] = new_id
+    return new_id
+
+
 def apply_annex_banner(header_root, section_roots):
     """붙임·참고 배너를 양식 참고 블록 정합으로 처리한다(R027 — 사용자 확정 '26.7.24):
     ① 배너 앵커 문단 pageBreakBefore=1 (별도 페이지 시작)
-    ② 배너 셀 글자 HY헤드라인M 16pt (양식 실측: 참고1 배너 = HY헤드라인M 16Point)."""
+    ② 배너 셀 글자 HY헤드라인M 16pt (라벨 셀은 흰색)
+    ③ 셀별 테두리·채움을 양식 '참고1' 실측값으로 배정 (BANNER_CELL_SPECS)
+    ④ 행 높이 28.3pt."""
     p_tag = qn("hp", "p")
     char_cache = {}
+    color_cache = {}
     pb_cache = {}
+    fill_cache = {}
     banners = 0
     cell_runs = 0
+    fills_set = 0
     for sec_root in section_roots:
         for child in sec_root:
             if child.tag != p_tag:
@@ -691,17 +787,39 @@ def apply_annex_banner(header_root, section_roots):
                 if new_pp != base_pp:
                     child.set("paraPrIDRef", new_pp)
             for tbl in banner_tbls:
-                for cell_p in tbl.iter(p_tag):
-                    for run in cell_p.findall(qn("hp", "run")):
-                        base_id = run.get("charPrIDRef")
-                        if base_id is None:
-                            continue
-                        new_id = ensure_charpr_font_size(
-                            header_root, base_id, "HY헤드라인M", 1600, char_cache)
-                        if new_id != base_id:
-                            run.set("charPrIDRef", new_id)
-                            cell_runs += 1
-    return {"banners": banners, "cell_runs_changed": cell_runs}
+                row = tbl.find(qn("hp", "tr"))
+                cells = row.findall(qn("hp", "tc"))
+                cells_sorted = sorted(
+                    cells,
+                    key=lambda tc: int(
+                        tc.find(qn("hp", "cellAddr")).get("colAddr", "0")
+                        if tc.find(qn("hp", "cellAddr")) is not None else 0))
+                sz = tbl.find(qn("hp", "sz"))
+                if sz is not None and sz.get("height") is not None:
+                    sz.set("height", str(BANNER_ROW_HEIGHT))
+                for idx, tc in enumerate(cells_sorted):
+                    spec = BANNER_CELL_SPECS[min(idx, len(BANNER_CELL_SPECS) - 1)]
+                    fill_id = ensure_banner_fill(header_root, spec, fill_cache)
+                    if tc.get("borderFillIDRef") != fill_id:
+                        tc.set("borderFillIDRef", fill_id)
+                        fills_set += 1
+                    csz = tc.find(qn("hp", "cellSz"))
+                    if csz is not None:
+                        csz.set("height", str(BANNER_ROW_HEIGHT))
+                    for cell_p in tc.iter(p_tag):
+                        for run in cell_p.findall(qn("hp", "run")):
+                            base_id = run.get("charPrIDRef")
+                            if base_id is None:
+                                continue
+                            new_id = ensure_charpr_font_size(
+                                header_root, base_id, "HY헤드라인M", 1600, char_cache)
+                            if idx == 0:
+                                new_id = ensure_charpr_color(
+                                    header_root, new_id, "#FFFFFF", color_cache)
+                            if new_id != base_id:
+                                run.set("charPrIDRef", new_id)
+                                cell_runs += 1
+    return {"banners": banners, "cell_runs_changed": cell_runs, "fills_set": fills_set}
 
 
 def ensure_charpr_bold(header_root, base_id, cache):

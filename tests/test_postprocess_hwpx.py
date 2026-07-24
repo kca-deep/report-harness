@@ -948,12 +948,12 @@ def test_annex_banner_idempotent_and_no_font_noop(tmp_path):
     ph.process_file(str(p), star=False, spacing=True)
     s2 = ph.process_file(str(p), star=False, spacing=True)
     assert s2["annex_banner"]["cell_runs_changed"] == 0
-    # HY헤드라인M 폰트가 없는 문서에서는 no-op (배너 검출은 되나 치환 0)
+    # HY헤드라인M 폰트가 없는 문서에서는 폰트 치환 no-op, 라벨 흰색 치환 1건만 발생
     p3 = tmp_path / "bn3.hwpx"
     build_hwpx(str(p3), section_xml=BANNER_SECTION)
     s3 = ph.process_file(str(p3), star=False, spacing=True)
     assert s3["annex_banner"]["banners"] == 1
-    assert s3["annex_banner"]["cell_runs_changed"] == 0
+    assert s3["annex_banner"]["cell_runs_changed"] == 1
 
 
 def test_is_banner_table_rejects_content_tables():
@@ -965,3 +965,42 @@ def test_is_banner_table_rejects_content_tables():
         '<hp:tc><hp:subList><hp:p><hp:run><hp:t>b</hp:t></hp:run></hp:p></hp:subList></hp:tc>'
         '</hp:tr></hp:tbl>')
     assert not ph._is_banner_table(tbl)
+
+
+def test_annex_banner_cell_styles(tmp_path):
+    p = tmp_path / "bs.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_WITH_HEADLINE, section_xml=BANNER_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["annex_banner"]["fills_set"] == 3
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    fills = {bf.get("id"): bf for bf in hdr.iter(ph.qn("hh", "borderFill"))}
+    tbl = next(t for t in sec.iter(ph.qn("hp", "tbl")))
+    cells = tbl.find(ph.qn("hp", "tr")).findall(ph.qn("hp", "tc"))
+    # 라벨 셀: 4변 SOLID 0.5mm #60171B + 채움 #632D2B
+    bf0 = fills[cells[0].get("borderFillIDRef")]
+    for side in ("left", "right", "top", "bottom"):
+        el = bf0.find(ph.qn("hh", f"{side}Border"))
+        assert (el.get("type"), el.get("width"), el.get("color")) == ("SOLID", "0.5 mm", "#60171B")
+    brush = bf0.find(f"{ph.qn('hc', 'fillBrush')}/{ph.qn('hc', 'winBrush')}")
+    assert brush.get("faceColor") == "#632D2B"
+    # 스페이서: 좌변만 SOLID, 채움 없음
+    bf1 = fills[cells[1].get("borderFillIDRef")]
+    assert bf1.find(ph.qn("hh", "leftBorder")).get("type") == "SOLID"
+    assert bf1.find(ph.qn("hh", "topBorder")).get("type") == "NONE"
+    assert bf1.find(ph.qn("hc", "fillBrush")) is None
+    # 제목 셀: 상·하변 SOLID, 좌·우 NONE
+    bf2 = fills[cells[2].get("borderFillIDRef")]
+    assert bf2.find(ph.qn("hh", "topBorder")).get("type") == "SOLID"
+    assert bf2.find(ph.qn("hh", "bottomBorder")).get("type") == "SOLID"
+    assert bf2.find(ph.qn("hh", "leftBorder")).get("type") == "NONE"
+    # 라벨 글자 흰색·16pt, 행 높이 2830
+    info = {cp.get("id"): (cp.get("height"), cp.get("textColor"))
+            for cp in hdr.iter(ph.qn("hh", "charPr"))}
+    label_run = next(r for r in cells[0].iter(ph.qn("hp", "run")))
+    assert info[label_run.get("charPrIDRef")] == ("1600", "#FFFFFF")
+    assert cells[0].find(ph.qn("hp", "cellSz")).get("height") == "2830"
+    # 멱등
+    s2 = ph.process_file(str(p), star=False, spacing=True)
+    assert s2["annex_banner"]["fills_set"] == 0 and s2["annex_banner"]["cell_runs_changed"] == 0
