@@ -8,6 +8,15 @@
 - 동기화 부채 해소: installed↔repo (`inject_images.py`·`assets/kca-header-banner/` repo 누락분 복사)
 - 테스트 118 → 142
 
+## Unreleased (2026-07-29)
+- 제거: `inject_images.py` — SKILL.md·commands·references·tests 어디서도 호출되지 않는 고아
+  스크립트(참조 0곳, 131줄 전량 미실행). repo·installed 양쪽 삭제. 이미지 주입이 필요해지면
+  `/tmp/_hwpx` 무조건 rmtree(:66-67,:144)와 재실행 시 zip 엔트리 중복(:124-130)을 고친 뒤
+  파이프라인에 배선해 재도입한다 (이력: `git show 9312f63:skills/report-pipeline/scripts/inject_images.py`)
+- 배포 제외 확대: `form/` 전체를 추적 해제(12.6MB, 배포 페이로드의 94.9%) — 런타임 참조 0곳이고
+  양식 자산은 `assets/` 번들 사본(양식 hwp md5 동일·도식Pool 경량본)으로 충족. `.gitignore`·
+  README §5·`package_check.sh` 가드 동기화. 로컬 원본은 유지, 과거 추적분은 git 이력에 보존
+
 ## 0.1.0 (2026-07-22)
 - 최초 릴리스: report-pipeline(4단계 조합형 오케스트레이터)·report-research(산출 계약 조사)·humanizer(번들, MIT DaleSeo) 스킬 3종 + 슬래시 커맨드 4종
 - 결정론 툴체인: harness_config / lint_md_profile(룰 7종) / prep_report_md(모호 입력 거부·삭제 회계) / validate_hwpx(structural·compare·numbers) / check_image_size / extract_format_profile + pii_scan 패키징 가드

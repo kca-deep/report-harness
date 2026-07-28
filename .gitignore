@@ -4,7 +4,7 @@ __pycache__/
 .DS_Store
 .superpowers/
 
-# 배포 제외 (spec §12) — 실보고서 원본·분석 원자재는 로컬 참고용, 배포 레포에는 포함하지 않는다.
-# form/양식(표)/ 와 form/250609_...hwp(기본 양식)는 번들 자산이므로 이 규칙에서 제외한다.
-form/보고서/
+# 배포 제외 (spec §12) — 실보고서·기관 양식 원본은 로컬 참고용, 배포 레포에는 포함하지 않는다.
+# 런타임이 쓰는 양식 자산은 skills/report-pipeline/assets/ 번들 사본이다(form/ 참조 경로 0).
+form/
 docs/analysis/
