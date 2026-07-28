@@ -59,7 +59,7 @@ cp -R commands ~/.claude/
 | 키 | 없을 때 기본값 | 역할 |
 |---|---|---|
 | `reports_dir` | `{cwd}/reports` | 건별 작업폴더 루트(`{reports_dir}/{YYYYMMDD}/{HHMM}_{슬러그}/`) |
-| `state_dir` | `~/.claude/report-harness-state/` (자동 생성) | `rules.md`·`lessons.jsonl` 위치 |
+| `state_dir` | `{cwd}/.report-harness` (자동 생성) | `rules.md`·`lessons.jsonl` 위치. 첫 실행 시 `references/rules-seed.md`(R001~R042)를 `rules.md`로 복사 |
 | `knowledge_vault` | 없음 → vault 기능(사전지식 조회·적재 후보) 전부 생략 | 개인 지식 vault 루트(claudian 등) |
 | `template_hwpx` | 없음 → kordoc 보고서 preset 기본 서식만 사용 | 기관 레터헤드·스타일 템플릿 병합용 |
 

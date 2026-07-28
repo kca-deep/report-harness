@@ -16,6 +16,11 @@
 - 배포 제외 확대: `form/` 전체를 추적 해제(12.6MB, 배포 페이로드의 94.9%) — 런타임 참조 0곳이고
   양식 자산은 `assets/` 번들 사본(양식 hwp md5 동일·도식Pool 경량본)으로 충족. `.gitignore`·
   README §5·`package_check.sh` 가드 동기화. 로컬 원본은 유지, 과거 추적분은 git 이력에 보존
+- **축적룰 전량 승계: `rules-seed.md` R001~R006 → R001~R042**. 그간 승격분 36종(R007~R042)이
+  운영 `state_dir/rules.md`에만 있어 신규 설치자는 6종만 받던 격차를 해소 — 실제 운영 기준으로
+  배포. 이후 승격은 운영 파일에 먼저 반영하고 배포 전 시드로 동기화한다
+- 문서 정정: README `state_dir` 기본값 `~/.claude/report-harness-state/` → 실제값
+  `{cwd}/.report-harness` (`harness_config.py:23`)
 
 ## 0.1.0 (2026-07-22)
 - 최초 릴리스: report-pipeline(4단계 조합형 오케스트레이터)·report-research(산출 계약 조사)·humanizer(번들, MIT DaleSeo) 스킬 3종 + 슬래시 커맨드 4종
