@@ -1,9 +1,9 @@
 import pathlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REF = ROOT / "skills/report-pipeline/references"
-# lint_md_profile.py 구현 룰 7종 (브리프 6종 + 구현 중 추가된 misplaced-marker)
+# lint_md_profile.py 구현 룰 8종 (브리프 6종 + misplaced-marker + highlight-unpaired(R040))
 RULES = ["inline-markdown", "non-bold-markup", "table-too-wide", "depth-exceeded",
-         "bullet-overflow", "html-tag", "misplaced-marker"]
+         "bullet-overflow", "html-tag", "misplaced-marker", "highlight-unpaired"]
 
 def test_md_profile_mentions_all_lint_rules():
     text = (REF / "md-profile.md").read_text(encoding="utf-8")

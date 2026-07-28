@@ -186,12 +186,12 @@ def test_spacing_inserts_and_modifies(hwpx_file):
     summary = ph.process_file(str(hwpx_file), star=False, spacing=True)
     events = summary["spacing"]["events"]
     names = [e["transition"] for e in events]
-    # insert 경로: 발신줄→□, □→ㅇ(x2), ㅇ→-, -→＊, ＊→캡션, ㅇ→□(블록구분)
+    # insert 경로: 발신줄→□, □→ㅇ(x2), ㅇ→-, -→＊, ＊→표(캡션 내장 후 승계, R034), ㅇ→□(블록구분)
     assert names.count("sending_to_dae") == 1
     assert names.count("dae_to_yo") == 2
     assert names.count("yo_to_dash") == 1
     assert names.count("dash_to_star") == 1
-    assert names.count("star_to_caption") == 1
+    assert names.count("star_to_table") == 1
     assert names.count("block_boundary") == 2  # 표→□2(기존 빈 문단 modify) + ㅇ2→□3(insert)
     assert summary["spacing"]["modified"] == 1  # 표→□2 구간의 기존 빈 문단
     assert summary["spacing"]["inserted"] == len(events) - 1
@@ -222,8 +222,12 @@ def test_spacing_inserts_and_modifies(hwpx_file):
     idx_star1 = texts.index("＊ 각주1")
     assert height_of(tops[idx_star1 - 1]) == "300"
 
-    idx_caption = texts.index("[ 표 제목 ]")
-    assert height_of(tops[idx_caption - 1]) == "1000"
+    # 캡션은 표 안 hp:caption으로 내장(R034) — 스페이서 1000은 표 래퍼 문단 앞에 위치
+    idx_table = next(i for i, p in enumerate(tops)
+                     if any(r.find(ph.qn("hp", "tbl")) is not None
+                            for r in p.findall(ph.qn("hp", "run"))))
+    assert height_of(tops[idx_table - 1]) == "1000"
+    assert "[ 표 제목 ]" not in texts  # 최상위 캡션 문단은 표 안으로 이동
 
     idx_dae2 = texts.index("□ 제목2")
     assert height_of(tops[idx_dae2 - 1]) == "1500"  # 표→□2, 기존 빈 문단 재활용(modify)
@@ -307,7 +311,7 @@ def test_main_all_success_exit0(hwpx_file, capsys):
 def test_main_nothing_to_do_exit1(tmp_path, capsys):
     section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
-  <hp:p paraPrIDRef="3" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t> ㅇ 요지1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="3" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>요지1</hp:t></hp:run></hp:p>
 </hs:sec>
 """
     header = HEADER_XML.replace(
@@ -346,34 +350,43 @@ def test_zero_margins_removes_parapr_prev(tmp_path):
     assert summary["zero_margins"]["count"] == 1
     assert summary["zero_margins"]["zeroed"][0]["old"]["prev"] == "3000"
     with zipfile.ZipFile(str(p)) as z:
-        hdr = z.read("Contents/header.xml").decode()
-    import re as _re2
-    # prev=3000이 0으로 교정됐는지(내어쓰기 left=3000은 hang 체계의 정당한 값이라 존재 가능)
-    assert not _re2.search(r'<hc:prev value="3000"', hdr)
+        hdr_root = ET.fromstring(z.read("Contents/header.xml"))
+    # 최상위 콘텐츠 문단이 참조하는 paraPr(id=0)의 prev=3000이 0으로 교정됐는지.
+    # ※ 캡션 내장(R034)이 zero_margins보다 먼저 실행되므로, 내장 캡션의 CENTER 복제
+    #   paraPr은 base의 prev=3000을 물려받은 채 남는다 — 최상위 흐름 밖이라 R014 비대상.
+    pp0 = next(pp for pp in hdr_root.iter(ph.qn("hh", "paraPr")) if pp.get("id") == "0")
+    prev0 = pp0.find(f"{ph.qn('hh', 'margin')}/{ph.qn('hc', 'prev')}")
+    assert prev0.get("value") == "0"
     # 실효 간격 리포트: □→ㅇ = 스페이서 6pt + prev 0
     gaps = {g["between"]: g["gap_pt"] for g in summary["effective_gaps"]}
     assert gaps.get("dae→yo") == 6.0
 
 
-def test_center_tables_and_captions(tmp_path):
+def test_table_alignment_and_caption_embed(tmp_path):
+    # R034: 캡션은 hp:caption으로 내장(CENTER) / R015 정정: 본문 콘텐츠 표 래퍼 RIGHT
     p = tmp_path / "ct.hwpx"
     build_hwpx(str(p))
     summary = ph.process_file(str(p), star=False, spacing=True)
-    assert summary["center_tables"]["centered"]["caption"] >= 1
-    assert summary["center_tables"]["centered"]["table"] >= 1
+    assert summary["caption_embed"]["embedded"] == 1
+    assert summary["table_alignment"]["aligned"]["caption"] == 0  # 잔존 캡션 문단 없음
+    assert summary["table_alignment"]["aligned"]["table_right"] == 1
     with zipfile.ZipFile(str(p)) as z:
-        hdr = z.read("Contents/header.xml").decode()
-        sec = z.read("Contents/section0.xml").decode()
-    assert 'horizontal="CENTER"' in hdr
-    import re as _re
-    i = sec.find("[ 표 제목 ]")
-    seg = sec[max(0, i - 400):i]
-    pid = _re.findall(r'paraPrIDRef="(\d+)"', seg)[-1]
-    assert pid != "0"
-    j = sec.find("ㅇ 요지1")
-    seg2 = sec[max(0, j - 400):j]
-    pid2 = _re.findall(r'paraPrIDRef="(\d+)"', seg2)[-1]
-    assert pid2 != pid  # 본문 ㅇ은 캡션 센터 paraPr을 공유하지 않음(hang 복제본)
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    aligns = {}
+    for pp in hdr.iter(ph.qn("hh", "paraPr")):
+        al = pp.find(ph.qn("hh", "align"))
+        aligns[pp.get("id")] = al.get("horizontal") if al is not None else None
+    tbl = next(t for t in sec.iter(ph.qn("hp", "tbl")))
+    cap = tbl.find(ph.qn("hp", "caption"))
+    assert cap is not None
+    cap_p = next(cp for cp in cap.iter(ph.qn("hp", "p")))
+    assert "[ 표 제목 ]" in "".join(t.text or "" for t in cap_p.iter(ph.qn("hp", "t")))
+    assert aligns[cap_p.get("paraPrIDRef")] == "CENTER"  # 내장 캡션 문단 CENTER
+    wrapper = next(c for c in sec if c.tag == ph.qn("hp", "p")
+                   and any(r.find(ph.qn("hp", "tbl")) is not None
+                           for r in c.findall(ph.qn("hp", "run"))))
+    assert aligns[wrapper.get("paraPrIDRef")] == "RIGHT"  # 표 래퍼 문단 RIGHT
 
 
 # --- ④표-문단 간격 보정 전환 값 -------------------------------------------
@@ -407,7 +420,7 @@ def test_center_cell_text_excludes_title_box(tmp_path):
     build_hwpx(str(p), section_xml=TITLE_BOX_SECTION_XML)
     summary = ph.process_file(str(p), star=False, spacing=True)
     assert summary["center_cells"]["tables"] == 1       # 제목 박스 표는 제외, 콘텐츠 표만 카운트
-    assert summary["center_cells"]["paragraphs"] == 1
+    assert summary["center_cells"]["paragraphs"] == 2   # 셀 문단 + 내장 캡션 문단(R034)
 
     with zipfile.ZipFile(p) as z:
         sec = z.read("Contents/section0.xml").decode()
@@ -431,7 +444,7 @@ def test_center_cell_text_excludes_title_box(tmp_path):
 def test_center_cell_text_on_content_table(hwpx_file):
     summary = ph.process_file(str(hwpx_file), star=False, spacing=True)
     assert summary["center_cells"]["tables"] == 1
-    assert summary["center_cells"]["paragraphs"] == 1
+    assert summary["center_cells"]["paragraphs"] == 2  # 셀 문단 + 내장 캡션 문단(R034)
     with zipfile.ZipFile(hwpx_file) as z:
         hdr = z.read("Contents/header.xml").decode()
         sec = z.read("Contents/section0.xml").decode()
@@ -829,7 +842,8 @@ def test_caption_and_cell_font_12pt(tmp_path):
     summary = ph.process_file(str(p), star=False, spacing=True)
     cfr = summary["caption_table_font"]
     assert cfr["height"] == 1200
-    assert cfr["caption_runs_changed"] >= 1 and cfr["cell_runs_changed"] >= 1
+    # R034 내장 후 캡션 문단은 표 안에 있으므로 cell_runs로 집계된다(최상위 캡션 0건)
+    assert cfr["caption_runs_changed"] == 0 and cfr["cell_runs_changed"] >= 2
     with zipfile.ZipFile(str(p)) as z:
         hdr = ET.fromstring(z.read("Contents/header.xml"))
         sec = ET.fromstring(z.read("Contents/section0.xml"))
@@ -1004,3 +1018,513 @@ def test_annex_banner_cell_styles(tmp_path):
     # 멱등
     s2 = ph.process_file(str(p), star=False, spacing=True)
     assert s2["annex_banner"]["fills_set"] == 0 and s2["annex_banner"]["cell_runs_changed"] == 0
+
+
+# --- R037 배너 제목 셀 양쪽정렬 ---------------------------------------------
+
+def _parapr_aligns(hdr_root):
+    aligns = {}
+    for pp in hdr_root.iter(ph.qn("hh", "paraPr")):
+        al = pp.find(ph.qn("hh", "align"))
+        aligns[pp.get("id")] = al.get("horizontal") if al is not None else None
+    return aligns
+
+
+def _banner_cells(sec_root):
+    tbl = next(t for t in sec_root.iter(ph.qn("hp", "tbl")))
+    return tbl.find(ph.qn("hp", "tr")).findall(ph.qn("hp", "tc"))
+
+
+def test_annex_banner_title_cell_justify(tmp_path):
+    # 제목 셀(3번째) 문단이 CENTER 기반이어도 JUSTIFY로 치환된다 (R037)
+    header = HEADER_WITH_HEADLINE.replace('horizontal="JUSTIFY"', 'horizontal="CENTER"')
+    p = tmp_path / "bj.hwpx"
+    build_hwpx(str(p), header_xml=header, section_xml=BANNER_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["annex_banner"]["title_justified"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    aligns = _parapr_aligns(hdr)
+    cells = _banner_cells(sec)
+    # 제목 셀 문단이 JUSTIFY paraPr을 '실참조'하는지 검증 (선언만이 아니라 사용)
+    title_p = next(cp for cp in cells[2].iter(ph.qn("hp", "p")))
+    assert aligns[title_p.get("paraPrIDRef")] == "JUSTIFY"
+    # 라벨('붙 임')·스페이서 셀은 CENTER 현행 유지 (center_cells 배정)
+    for tc in cells[:2]:
+        for cell_p in tc.iter(ph.qn("hp", "p")):
+            assert aligns[cell_p.get("paraPrIDRef")] == "CENTER"
+    # 멱등: 재실행 시 추가 치환 없음
+    s2 = ph.process_file(str(p), star=False, spacing=True)
+    assert s2["annex_banner"]["title_justified"] == 0
+
+
+def test_annex_banner_title_cell_not_recentered(tmp_path):
+    # 기본(JUSTIFY 기반) 문서: center_cells가 배너 제목 셀을 CENTER로 덮어쓰지 않는다
+    p = tmp_path / "bj2.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_WITH_HEADLINE, section_xml=BANNER_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["annex_banner"]["title_justified"] == 0  # 이미 JUSTIFY — 치환 불필요
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    aligns = _parapr_aligns(hdr)
+    cells = _banner_cells(sec)
+    title_p = next(cp for cp in cells[2].iter(ph.qn("hp", "p")))
+    assert aligns[title_p.get("paraPrIDRef")] == "JUSTIFY"
+
+
+# --- R038 ※·＊ → ㅇ 복귀 전환 간격 6pt ---------------------------------------
+
+def test_cham_star_to_yo_transition_values():
+    assert ph.transition_for("cham", "yo") == ("cham_to_yo", 600)
+    assert ph.transition_for("star", "yo") == ("star_to_yo", 600)
+
+
+def test_spacing_cham_to_yo_inserts_6pt(tmp_path):
+    # 결함 재현: ※ 단서 문단 바로 다음 ㅇ 문단 — 종전에는 전환 미정의로 간격 0
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 요지1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>※ 도입 후 총소요 산식 단서</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ (판정 규율) 분류가 절감 실적을 좌우</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>＊ 각주 문단</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 요지3</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "cham_yo.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    names = [e["transition"] for e in summary["spacing"]["events"]]
+    assert names.count("cham_to_yo") == 1
+    assert names.count("star_to_yo") == 1
+    for e in summary["spacing"]["events"]:
+        if e["transition"] in ("cham_to_yo", "star_to_yo"):
+            assert e["height"] == 600
+    # XML 실사용: ※ 문단과 다음 ㅇ 문단 사이에 6pt(600) 스페이서 문단 존재
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    heights = {cp.get("id"): cp.get("height") for cp in hdr.iter(ph.qn("hh", "charPr"))}
+    tops = list(sec)
+    texts = [ph.para_text(x).strip() for x in tops]
+    idx_yo2 = next(i for i, t in enumerate(texts) if t.startswith("ㅇ (판정 규율)"))
+    spacer = tops[idx_yo2 - 1]
+    assert ph.para_text(spacer).strip() == ""
+    assert heights[spacer.find(ph.qn("hp", "run")).get("charPrIDRef")] == "600"
+
+
+# --- R039 괄호 13pt — run 경계를 넘는 구간 처리 -------------------------------
+
+HEADER_WITH_BOLD = HEADER_XML.replace(
+    "</hh:charProperties>",
+    '''<hh:charPr id="2" height="1500" textColor="#000000" shadeColor="none" useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="1">
+        <hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
+        <hh:bold/>
+      </hh:charPr>
+    </hh:charProperties>''').replace(
+    '<hh:charProperties itemCnt="2">', '<hh:charProperties itemCnt="3">')
+
+
+def _charpr_info(hdr_root):
+    """charPr id → (height, bold 여부, shadeColor)"""
+    info = {}
+    for cp in hdr_root.iter(ph.qn("hh", "charPr")):
+        info[cp.get("id")] = (cp.get("height"),
+                              cp.find(ph.qn("hh", "bold")) is not None,
+                              cp.get("shadeColor"))
+    return info
+
+
+def _run_pieces(sec_root):
+    """최상위 문단들의 (텍스트, charPrIDRef) run 조각 목록(스페이서 제외)."""
+    out = []
+    for para in sec_root:
+        if para.tag != ph.qn("hp", "p"):
+            continue
+        for run in para.findall(ph.qn("hp", "run")):
+            t = run.find(ph.qn("hp", "t"))
+            if t is not None and t.text:
+                out.append((t.text, run.get("charPrIDRef")))
+    return out
+
+
+CROSS_RUN_SECTION = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 대상은 (대상 </hp:t></hp:run><hp:run charPrIDRef="2"><hp:t>T1</hp:t></hp:run><hp:run charPrIDRef="0"><hp:t> 등) 서술 계속</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+
+
+def test_paren_small_cross_run_bold_preserved(tmp_path):
+    # 결함 재현: 문장 안 볼드(**T1**)로 run이 쪼개져 괄호가 run 경계를 넘는 경우
+    p = tmp_path / "paren_cross.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_WITH_BOLD, section_xml=CROSS_RUN_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    ps = summary["paren_small"]
+    assert ps["cross_run_skipped"] == 0
+    assert ps["paren_spans"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    info = _charpr_info(hdr)
+    pieces = _run_pieces(sec)
+    by_text = {t: cp for t, cp in pieces}
+    # 괄호 구간 3조각 전부 13pt, 볼드 run 조각은 13pt+볼드(볼드 보존)
+    assert info[by_text["(대상 "]] == ("1300", False, "none")
+    assert info[by_text["T1"]] == ("1300", True, "none")
+    assert info[by_text[" 등)"]] == ("1300", False, "none")
+    # 괄호 밖 조각은 15pt 유지
+    assert info[by_text[" 서술 계속"]][0] == "1500"
+    assert [t for t, _ in pieces if "ㅇ 대상은" in t]  # 선두 서술 조각 존재
+
+
+def test_paren_small_cross_run_idempotent(tmp_path):
+    p = tmp_path / "paren_idem.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_WITH_BOLD, section_xml=CROSS_RUN_SECTION)
+    ph.process_file(str(p), star=False, spacing=True)
+    s2 = ph.process_file(str(p), star=False, spacing=True)
+    assert s2["paren_small"]["paren_spans"] == 0
+    assert s2["paren_small"]["cross_run_skipped"] == 0
+
+
+def test_paren_small_lead_exception_cross_run(tmp_path):
+    # R016·R033 예외: ㅇ 선두 괄호 리드는 run이 쪼개져 있어도 15pt 볼드 유지
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ (</hp:t></hp:run><hp:run charPrIDRef="2"><hp:t>판 정</hp:t></hp:run><hp:run charPrIDRef="0"><hp:t>) 분류 기준 서술</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "paren_lead.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_WITH_BOLD, section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    ps = summary["paren_small"]
+    assert ps["lead_skipped"] == 1
+    assert ps["paren_spans"] == 0
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    info = _charpr_info(hdr)
+    for t, cp in _run_pieces(sec):
+        assert info[cp][0] == "1500"  # 리드 괄호는 축소되지 않음
+
+
+def test_paren_small_single_run_still_works(tmp_path):
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 서술 문장(부가 설명) 계속</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "paren_single.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["paren_small"]["paren_spans"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    info = _charpr_info(hdr)
+    by_text = {t: cp for t, cp in _run_pieces(sec)}
+    assert info[by_text["(부가 설명)"]][0] == "1300"
+    assert info[by_text[" 계속"]][0] == "1500"
+
+
+# --- R040 `==문구==` 노란 음영 하이라이트 -------------------------------------
+
+def test_highlight_single_run(tmp_path):
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 핵심은 ==특히 강조== 사항</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "hl.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["highlight"]["highlights"] == 1
+    assert summary["highlight"]["shade"] == "#FFFF00"
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec_raw = z.read("Contents/section0.xml").decode()
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    assert "==" not in sec_raw  # 마커 제거 완료
+    info = _charpr_info(hdr)
+    by_text = {t: cp for t, cp in _run_pieces(sec)}
+    # 실측 인코딩(260331 charPr82): shadeColor=#FFFF00 + 볼드, 크기·폰트는 본문 유지
+    assert info[by_text["특히 강조"]] == ("1500", True, "#FFFF00")
+    assert info[by_text[" 사항"]] == ("1500", False, "none")
+
+
+def test_highlight_cross_run_bold_inside(tmp_path):
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 앞 ==하이</hp:t></hp:run><hp:run charPrIDRef="2"><hp:t>라이트</hp:t></hp:run><hp:run charPrIDRef="0"><hp:t> 끝== 뒤</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "hl_cross.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_WITH_BOLD, section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["highlight"]["highlights"] == 1
+    assert summary["highlight"]["skipped"] == 0
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec_raw = z.read("Contents/section0.xml").decode()
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    assert "==" not in sec_raw
+    info = _charpr_info(hdr)
+    by_text = {t: cp for t, cp in _run_pieces(sec)}
+    assert info[by_text["하이"]] == ("1500", True, "#FFFF00")
+    assert info[by_text["라이트"]] == ("1500", True, "#FFFF00")  # 원래 볼드 run — 볼드 유지+음영
+    assert info[by_text[" 끝"]] == ("1500", True, "#FFFF00")
+    assert info[by_text[" 뒤"]] == ("1500", False, "none")
+
+
+def test_highlight_unpaired_left_alone(tmp_path):
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 값 == 비교 서술</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "hl_unpaired.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["highlight"]["highlights"] == 0
+    with zipfile.ZipFile(str(p)) as z:
+        sec = z.read("Contents/section0.xml").decode()
+    assert "값 == 비교 서술" in sec  # 짝 없는 == 는 건드리지 않음
+
+
+def test_highlight_idempotent(tmp_path):
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 핵심은 ==강조== 사항</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "hl_idem.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    ph.process_file(str(p), star=False, spacing=True)
+    s2 = ph.process_file(str(p), star=False, spacing=True)
+    assert s2["highlight"]["highlights"] == 0
+
+
+def test_highlight_inside_table_cell(tmp_path):
+    # 마커 잔존 방지: 표 셀 문단도 처리 대상
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 절</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:tbl id="1" rowCnt="1" colCnt="1"><hp:tr><hp:tc><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>셀 ==중요== 값</hp:t></hp:run></hp:p></hp:subList></hp:tc></hp:tr></hp:tbl></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "hl_cell.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["highlight"]["highlights"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        sec = z.read("Contents/section0.xml").decode()
+    assert "==" not in sec
+
+
+# --- R041 머리말 배너 앵커 lineSpacing 100%·textWidth 보정 --------------------
+
+BANNER_PAGE_SECTION = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:secPr><hp:pagePr landscape="WIDELY" width="59528" height="84188" gutterType="LEFT_ONLY"><hp:margin header="4252" footer="2835" gutter="0" left="5669" right="5669" top="2835" bottom="4252"/></hp:pagePr></hp:secPr><hp:t> ㅇ 본문</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+
+
+def _header_anchor_and_cells(sec_root):
+    """주입된 hp:header에서 (앵커 문단, 배너 표 내부 문단들)을 찾는다."""
+    hdr = next(h for h in sec_root.iter(ph.qn("hp", "header")))
+    sub = hdr.find(ph.qn("hp", "subList"))
+    anchor = next(pp for pp in sub.findall(ph.qn("hp", "p"))
+                  if any(r.find(ph.qn("hp", "tbl")) is not None
+                         for r in pp.findall(ph.qn("hp", "run"))))
+    tbl = next(t for t in anchor.iter(ph.qn("hp", "tbl")))
+    cell_ps = list(tbl.iter(ph.qn("hp", "p")))
+    return sub, anchor, cell_ps
+
+
+def _linespacing_values(hdr_root, parapr_id):
+    for pp in hdr_root.iter(ph.qn("hh", "paraPr")):
+        if pp.get("id") == parapr_id:
+            return {ls.get("value") for ls in pp.iter(ph.qn("hh", "lineSpacing"))}
+    return set()
+
+
+def test_header_banner_anchor_linespacing_100_and_textwidth(tmp_path):
+    p = tmp_path / "hb.hwpx"
+    build_hwpx(str(p), section_xml=BANNER_PAGE_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=False, header_banner=True)
+    hbr = summary["header_banner"]
+    assert hbr["injected"] == 1
+    geo = hbr["geometry"]
+    assert geo["linespacing_fixed"] >= 1          # 도너 150% → 100% (hp:switch 양 분기)
+    assert geo["textwidth_fixed"] == {"old": "51026", "new": 48190}  # 180mm → 본문 폭 170mm
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    sub, anchor, cell_ps = _header_anchor_and_cells(sec)
+    # 앵커 문단이 참조하는 paraPr의 lineSpacing 전 분기 100 (실사용 확인)
+    assert _linespacing_values(hdr, anchor.get("paraPrIDRef")) == {"100"}
+    # 배너 셀 내부 문단 paraPr(도너 160%)은 그대로 — 앵커만 대상
+    for cp in cell_ps:
+        assert _linespacing_values(hdr, cp.get("paraPrIDRef")) == {"160"}
+    assert sub.get("textWidth") == "48190"
+
+
+def test_header_banner_exists_path_repairs_legacy(tmp_path):
+    # 기주입 문서(앵커 150% 잔존·textWidth 도너값)를 재실행으로 소급 수리
+    p = tmp_path / "hb_legacy.hwpx"
+    build_hwpx(str(p), section_xml=BANNER_PAGE_SECTION)
+    s1 = ph.process_file(str(p), star=False, spacing=False, header_banner=True)
+    anchor_pp = s1["header_banner"]["geometry"]["anchor_parapr"]
+    # 구버전 주입 상태 재현: 앵커 lineSpacing을 150으로, textWidth를 도너값으로 되돌린 zip 재작성
+    with zipfile.ZipFile(str(p)) as z:
+        data = {n: z.read(n) for n in z.namelist()}
+        names = z.namelist()
+    hdr_txt = data["Contents/header.xml"].decode()
+    m = re.search(rf'(<hh:paraPr id="{anchor_pp}".*?</hh:paraPr>)', hdr_txt, re.S)
+    legacy_block = m.group(1).replace('value="100"', 'value="150"')
+    data["Contents/header.xml"] = hdr_txt.replace(m.group(1), legacy_block).encode()
+    data["Contents/section0.xml"] = data["Contents/section0.xml"].replace(
+        b'textWidth="48190"', b'textWidth="51026"')
+    with zipfile.ZipFile(str(p), "w") as z:
+        for n in names:
+            z.writestr(n, data[n])
+    s2 = ph.process_file(str(p), star=False, spacing=False, header_banner=True)
+    hbr = s2["header_banner"]
+    assert hbr["injected"] == 0 and hbr["reason"] == "header_exists"
+    geo = hbr["geometry"]
+    assert geo["anchor_parapr"] == anchor_pp
+    assert geo["linespacing_fixed"] == 2          # hp:case·hp:default 두 분기 150→100
+    assert geo["textwidth_fixed"] == {"old": "51026", "new": 48190}
+    assert s2["changed"] is True
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    sub, anchor, _ = _header_anchor_and_cells(sec)
+    assert _linespacing_values(hdr, anchor.get("paraPrIDRef")) == {"100"}
+    assert sub.get("textWidth") == "48190"
+
+
+def test_header_banner_idempotent_geometry(tmp_path):
+    p = tmp_path / "hb_idem.hwpx"
+    build_hwpx(str(p), section_xml=BANNER_PAGE_SECTION)
+    ph.process_file(str(p), star=False, spacing=False, header_banner=True)
+    s2 = ph.process_file(str(p), star=False, spacing=False, header_banner=True)
+    hbr = s2["header_banner"]
+    assert hbr["injected"] == 0
+    assert hbr["geometry"]["linespacing_fixed"] == 0
+    assert hbr["geometry"]["textwidth_fixed"] is None
+
+
+# ── apply_fit_page_width (R036·R042) ────────────────────────────────────────
+# 본문 폭 48190 (59528 - 5669*2, KCA 좌우 20mm 규격)
+
+def _fit_section(tables_xml):
+    return ET.fromstring(f"""<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="{NS['hs']}" xmlns:hp="{NS['hp']}" xmlns:hc="{NS['hc']}">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:secPr><hp:pagePr landscape="WIDELY" width="59528" height="84188" gutterType="LEFT_ONLY"><hp:margin header="4251" footer="2835" gutter="0" left="5669" right="5669" top="2834" bottom="4252"/></hp:pagePr></hp:secPr><hp:t>발신</hp:t></hp:run></hp:p>
+  {tables_xml}
+</hs:sec>""")
+
+
+def _fit_tbl(tid, width, om_l, om_r, cells, extra=""):
+    tcs = "".join(
+        f'<hp:tc><hp:cellSz width="{w}" height="1000"/><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0">'
+        f'<hp:run charPrIDRef="0"><hp:t>셀</hp:t></hp:run></hp:p></hp:subList></hp:tc>' for w in cells)
+    return (f'<hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0">'
+            f'<hp:tbl id="{tid}" rowCnt="1" colCnt="{len(cells)}">'
+            f'<hp:sz width="{width}" height="1000"/>'
+            f'<hp:outMargin left="{om_l}" right="{om_r}" top="0" bottom="0"/>'
+            f'<hp:tr>{tcs}</hp:tr>{extra}</hp:tbl></hp:run></hp:p>')
+
+
+def _tbl_metrics(sec, tid):
+    for tbl in sec.iter(ph.qn("hp", "tbl")):
+        if tbl.get("id") == tid:
+            sz = int(tbl.find(ph.qn("hp", "sz")).get("width"))
+            om = tbl.find(ph.qn("hp", "outMargin"))
+            om_l, om_r = int(om.get("left")), int(om.get("right"))
+            cells = [int(tc.find(ph.qn("hp", "cellSz")).get("width"))
+                     for tc in tbl.find(ph.qn("hp", "tr")).findall(ph.qn("hp", "tc"))]
+            return sz, om_l + om_r, cells
+    raise AssertionError(f"tbl {tid} not found")
+
+
+TEXT_W = 48190
+
+
+def test_fit_page_width_exact_match_gets_slack():
+    """R042 핵심: 총 폭 == 본문 폭(slack 0)도 축소 대상 — '이내'가 아니라 '미만'."""
+    # 20260728건 실측 재현: 제목표 sz 47624 + outMargin 283+283 = 48190 == 본문 폭
+    sec = _fit_section(_fit_tbl("9300001", 47624, 283, 283, [47624]))
+    r = ph.apply_fit_page_width([sec])
+    assert r["tables_fitted"] == 1
+    sz, om, cells = _tbl_metrics(sec, "9300001")
+    total = sz + om
+    assert total < TEXT_W                       # 총 폭이 본문 폭과 같아지지 않는다
+    assert TEXT_W - total >= ph.FIT_PAGE_SLACK  # slack ≥ 566 확보
+    assert sum(cells) == sz                     # 셀 폭 합 == 표 sz (한글 재계산 방지)
+
+
+def test_fit_page_width_overflow_lands_below_text_width():
+    """폭 초과 표(R036 원래 대상)도 이제 본문 폭 '미만'으로 착지한다."""
+    sec = _fit_section(_fit_tbl("1", 50737, 141, 141, [23953, 26784]))
+    r = ph.apply_fit_page_width([sec])
+    assert r["tables_fitted"] == 1
+    sz, om, cells = _tbl_metrics(sec, "1")
+    assert sz + om == TEXT_W - ph.FIT_PAGE_SLACK
+    assert sz + om < TEXT_W
+    assert sum(cells) == sz
+
+
+def test_fit_page_width_keeps_tables_with_enough_slack():
+    """이미 여유가 충분한 본문 표(slack 1801)는 건드리지 않는다."""
+    sec = _fit_section(_fit_tbl("1001", 46389, 0, 0, [5927, 13999, 26463]))
+    r = ph.apply_fit_page_width([sec])
+    assert r["tables_fitted"] == 0
+    assert _tbl_metrics(sec, "1001") == (46389, 0, [5927, 13999, 26463])
+
+
+def test_fit_page_width_idempotent():
+    """1회 축소 후 재실행은 무변경 — slack이 정확히 FIT_PAGE_SLACK이어도 재축소하지 않는다."""
+    sec = _fit_section(_fit_tbl("1", 47624, 283, 283, [47624]))
+    ph.apply_fit_page_width([sec])
+    first = _tbl_metrics(sec, "1")
+    r2 = ph.apply_fit_page_width([sec])
+    assert r2["tables_fitted"] == 0
+    assert _tbl_metrics(sec, "1") == first
+
+
+PIC_XML = (
+    '<hp:pic id="9700002" zOrder="2"><hp:offset x="0" y="0"/>'
+    '<hp:orgSz width="60000" height="7980"/><hp:curSz width="14315" height="1905"/>'
+    '<hp:rotationInfo angle="0" centerX="7157" centerY="952" rotateimage="1"/>'
+    '<hp:renderingInfo><hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+    '<hc:scaMatrix e1="0.238583" e2="0" e3="0" e4="0" e5="0.238722" e6="0"/>'
+    '<hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/></hp:renderingInfo>'
+    '<hp:sz width="14315" widthRelTo="ABSOLUTE" height="1905" heightRelTo="ABSOLUTE" protect="0"/>'
+    '</hp:pic>')
+
+
+def test_fit_page_width_rescales_pic_derived_cache():
+    """R042 위생: 그림 축소 시 scaMatrix e1/e5·rotationInfo center를 curSz에서 재계산한다."""
+    # 도너 배너 재현: 표 50737+141*2 → 초과, 내부 pic curSz 14315×1905 (scaMatrix는 도너 원값)
+    sec = _fit_section(_fit_tbl("9700001", 50737, 141, 141, [23953, 26784], extra=PIC_XML))
+    r = ph.apply_fit_page_width([sec])
+    assert r["tables_fitted"] == 1 and r["detail"][0]["pics_scaled"] == 1
+    pic = next(sec.iter(ph.qn("hp", "pic")))
+    cur = pic.find(ph.qn("hp", "curSz"))
+    cw, ch = int(cur.get("width")), int(cur.get("height"))
+    ratio = r["detail"][0]["ratio"]
+    assert cw == int(round(14315 * ratio)) and ch == int(round(1905 * ratio))
+    sz = pic.find(ph.qn("hp", "sz"))
+    assert (int(sz.get("width")), int(sz.get("height"))) == (cw, ch)
+    sca = pic.find(ph.qn("hp", "renderingInfo")).find(ph.qn("hc", "scaMatrix"))
+    assert sca.get("e1") == f"{cw / 60000:.6f}"   # 스테일 도너값 0.238583이 아니라 curSz/orgSz
+    assert sca.get("e5") == f"{ch / 7980:.6f}"
+    rot = pic.find(ph.qn("hp", "rotationInfo"))
+    assert (rot.get("centerX"), rot.get("centerY")) == (str(cw // 2), str(ch // 2))
+    # 위치 파생이 아닌 항목은 불변: transMatrix는 그대로
+    trans = pic.find(ph.qn("hp", "renderingInfo")).find(ph.qn("hc", "transMatrix"))
+    assert trans.get("e3") == "0" and trans.get("e6") == "0"

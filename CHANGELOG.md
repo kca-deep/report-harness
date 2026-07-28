@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (2026-07-28)
+- R038: ※·＊ 단서/각주 뒤 ㅇ 복귀 전환 6pt 스페이서 추가 (postprocess TRANSITIONS cham→yo·star→yo)
+- R039: 본문 괄호 13pt(R033)를 문단 전체 텍스트 기준 run 분할로 개정 — 문장 안 볼드로 run이 쪼개진 괄호도 처리(볼드 보존), cross_run_skipped 32→0
+- R040: `==문구==` 노란 음영 하이라이트 도입 — md-profile §1-3 문법·lint `highlight-unpaired`(8종째)·postprocess `apply_highlight`(shadeColor=#FFFF00+볼드, 260331 실무본 실측)·compare `==` 잔존 검출
+- R041: 머리말 배너(R030) 앵커 문단 lineSpacing 100% 강제 + subList textWidth 본문 폭 보정 — 도너 150%가 본문을 ≈4.6mm 밀던 제목표 상단 여백 실원인 정정, 기주입 문서 소급 수리(멱등)
+- 동기화 부채 해소: installed↔repo (`inject_images.py`·`assets/kca-header-banner/` repo 누락분 복사)
+- 테스트 118 → 142
+
 ## 0.1.0 (2026-07-22)
 - 최초 릴리스: report-pipeline(4단계 조합형 오케스트레이터)·report-research(산출 계약 조사)·humanizer(번들, MIT DaleSeo) 스킬 3종 + 슬래시 커맨드 4종
 - 결정론 툴체인: harness_config / lint_md_profile(룰 7종) / prep_report_md(모호 입력 거부·삭제 회계) / validate_hwpx(structural·compare·numbers) / check_image_size / extract_format_profile + pii_scan 패키징 가드

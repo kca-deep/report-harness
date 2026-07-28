@@ -6,11 +6,17 @@
                     height=1300·fontRef=맑은고딕 계열)로 치환한다. kordoc은 ※만
                     참고 스타일로 인식하고 전각 ＊는 본문 스타일로 남는 결함의 후처리
                     (기존 수동 zip 패치의 스크립트화, R011).
-  --spacing         계층 전환 지점(발신줄→□/□→ㅇ/ㅇ→-/-→＊/＊→표캡션/블록 구분)의
-                    간격을 원본 KCA 양식 실측값(스페이서 문단 방식)으로 재현한다.
+  --spacing         계층 전환 지점(발신줄→□/□→ㅇ/ㅇ→-/-→＊/※·＊→ㅇ(R038)/＊→표/블록
+                    구분)의 간격을 원본 KCA 양식 실측값(스페이서 문단 방식)으로 재현한다.
                     전환 지점에 이미 빈 문단이 있으면 그 charPr 높이를 치환하고,
-                    없으면 새 스페이서 문단을 삽입한다. 같은 묶음으로 표 셀 텍스트
-                    가운데 정렬·표 유닛 앞뒤 간격 보정·제목 박스 테두리 제거,
+                    없으면 새 스페이서 문단을 삽입한다. 같은 묶음으로 표 캡션 내장
+                    (hp:caption side=TOP, CENTER+볼드, R034)·표 배치 정렬(콘텐츠 표
+                    RIGHT·배너 LEFT·제목 박스 CENTER, R015 정정·R035)·표 셀 텍스트
+                    가운데 정렬(배너 제목 셀 제외)·붙임/참고 배너 제목 셀
+                    양쪽정렬(R037)·본문 계층 양쪽정렬(R032)·본문 괄호 13pt(R033 —
+                    run 경계 넘는 구간도 분할 처리, R039)·`==문구==` 노란 음영
+                    하이라이트(shadeColor=#FFFF00+볼드, R040)·
+                    서술 중 ＊ 위첨자(R031)·제목 박스 테두리 제거,
                     제목 박스 상단 여백 제거(앵커 줄간격 100%·outMargin top 0 — 상단
                     그라데이션 밴드 행은 양식 원형이므로 유지, R022)·표 캡션/셀
                     12pt(R023)·□ 절 제목 볼드(R024)·☞ 계층 띄어쓰기(R025)도 적용한다.
@@ -18,7 +24,12 @@
                     높이만 N(pt)로 치환한다. --all에는 포함되지 않는다(값 필요, 별도 지정).
   --star-indent L,I ＊·※ 문단의 paraPr margin을 left=L(pt)·intent=I(pt, 음수 허용)로
                     치환한다(prev/next 여백은 유지). --all에는 포함되지 않는다.
-  --all             --star-footnote·--spacing을 적용.
+  --header-banner   KCA 머리말 배너(로고+슬로건 표)를 주입한다(R030). 주입 시 앵커 문단
+                    lineSpacing을 100%로 강제하고 subList textWidth를 본문 폭으로
+                    보정한다(R041 — 도너 앵커 150%가 본문을 4.6mm 밀어낸 실원인 정정).
+                    hp:header 기존재 시 주입은 건너뛰되 앵커 기하 보정은 소급
+                    적용한다(멱등). 자산: assets/kca-header-banner/.
+  --all             --star-footnote·--spacing·--header-banner를 적용.
 
 실측 근거: /Users/bcchung81/workspace/claudian/reports/20260722/1313_하네스-AI성과-관리체계/
 research/fetched/양식-문단간격/추출결과.md — 계층 간격은 paraPr 위/아래 간격이 아니라
@@ -51,12 +62,21 @@ TRANSITIONS = {
     ("yo", "dash"): ("yo_to_dash", 600),
     ("dash", "star"): ("dash_to_star", 300),
     ("yo", "star"): ("yo_to_star", 300),        # 양식 미실측 전환 — dash→star 3pt 유추 적용
+    # ※·＊ 단서/각주 뒤 ㅇ 복귀(R038) — 양식·실무본 모두 해당 전환 실물이 없어 실측 불가,
+    # R013 체계의 X→ㅇ 전환(□→ㅇ·ㅇ→ㅇ·대시→ㅇ)이 전부 6pt인 정합값 적용
+    ("cham", "yo"): ("cham_to_yo", 600),
+    ("star", "yo"): ("star_to_yo", 600),
     ("star", "caption"): ("star_to_caption", 1000),
     ("caption", "table"): ("caption_to_table", 300),   # 캡션→표 3pt(사용자 확정 '26.7.22)
     ("table", "cham"): ("table_to_cham", 300),         # 표→※ 3pt
     ("yo", "caption"): ("yo_to_caption", 600),         # 문단→캡션 6pt
     ("dash", "caption"): ("dash_to_caption", 600),
     ("cham", "caption"): ("cham_to_caption", 600),
+    # 캡션 내장(R034) 후에는 캡션 자리에서 곧장 표를 만난다 — 기존 X→caption 값 승계
+    ("yo", "table"): ("yo_to_table", 600),
+    ("dash", "table"): ("dash_to_table", 600),
+    ("cham", "table"): ("cham_to_table", 600),
+    ("star", "table"): ("star_to_table", 1000),
     # ☞ 결론 유도 기호(R025) — ※·＊ 인접 간격(3pt) 준용
     ("cham", "arrow"): ("cham_to_arrow", 300),
     ("star", "arrow"): ("star_to_arrow", 300),
@@ -296,10 +316,11 @@ def apply_spacing(header_root, section_roots):
             "modified": sum(1 for e in events if e["type"] == "modify")}
 
 
-def ensure_centered_clone(header_root, base_id, cache):
-    """base paraPr을 복제해 align horizontal=CENTER인 paraPr id를 반환(중복 생성 방지 캐시)."""
-    if base_id in cache:
-        return cache[base_id]
+def ensure_aligned_clone(header_root, base_id, horizontal, cache):
+    """base paraPr을 복제해 align horizontal=horizontal인 paraPr id를 반환(중복 생성 방지 캐시)."""
+    key = (base_id, horizontal)
+    if key in cache:
+        return cache[key]
     paraprops = header_root.find(f".//{qn('hh', 'paraProperties')}")
     base = None
     for pp in paraprops.findall(qn("hh", "paraPr")):
@@ -309,8 +330,8 @@ def ensure_centered_clone(header_root, base_id, cache):
     if base is None:
         return base_id
     align = base.find(qn("hh", "align"))
-    if align is not None and align.get("horizontal") == "CENTER":
-        cache[base_id] = base_id
+    if align is not None and align.get("horizontal") == horizontal:
+        cache[key] = base_id
         return base_id
     new_pp = copy.deepcopy(base)
     max_id = max(int(pp.get("id")) for pp in paraprops.findall(qn("hh", "paraPr")))
@@ -318,33 +339,56 @@ def ensure_centered_clone(header_root, base_id, cache):
     new_pp.set("id", new_id)
     na = new_pp.find(qn("hh", "align"))
     if na is not None:
-        na.set("horizontal", "CENTER")
+        na.set("horizontal", horizontal)
     paraprops.append(new_pp)
     paraprops.set("itemCnt", str(len(paraprops.findall(qn("hh", "paraPr")))))
-    cache[base_id] = new_id
+    cache[key] = new_id
     return new_id
 
 
-def apply_center_tables(header_root, section_roots):
-    """표 캡션 문단과 표 래퍼 문단(treatAsChar 표)을 가운데 정렬 paraPr로 교체."""
+def ensure_centered_clone(header_root, base_id, cache):
+    """(호환 래퍼) CENTER 정렬 복제본."""
+    return ensure_aligned_clone(header_root, base_id, "CENTER", cache)
+
+
+def apply_table_alignment(header_root, section_roots):
+    """표 래퍼 문단(treatAsChar 표) 배치 정렬(R015 정정 — 사용자 확정 '26.7.28):
+    본문 콘텐츠 표 RIGHT · 붙임/참고 배너 표 LEFT(R035) · 제목 박스 CENTER 유지.
+    잔존 캡션 문단(내장 실패분)은 CENTER를 유지한다."""
     p_tag = qn("hp", "p")
     cache = {}
-    centered = {"caption": 0, "table": 0}
+    counts = {"caption": 0, "table_right": 0, "banner_left": 0, "title_center": 0}
+    seen_dae = False
     for sec_root in section_roots:
         for child in sec_root:
             if child.tag != p_tag:
                 continue
             kind = classify(child)
+            if kind == "dae":
+                seen_dae = True
+                continue
             if kind not in ("caption", "table"):
                 continue
             base_id = child.get("paraPrIDRef")
             if base_id is None:
                 continue
-            new_id = ensure_centered_clone(header_root, base_id, cache)
+            if kind == "caption":
+                horizontal, label = "CENTER", "caption"
+            else:
+                tbls = [tbl for run in child.findall(qn("hp", "run"))
+                        for tbl in run.findall(qn("hp", "tbl"))]
+                if not seen_dae:
+                    horizontal, label = "CENTER", "title_center"
+                elif any(_is_banner_table(t) for t in tbls):
+                    horizontal, label = "LEFT", "banner_left"
+                else:
+                    horizontal, label = "RIGHT", "table_right"
+            new_id = ensure_aligned_clone(header_root, base_id, horizontal, cache)
             if new_id != base_id:
                 child.set("paraPrIDRef", new_id)
-            centered[kind] += 1
-    return {"centered": centered, "new_parapr": {k: v for k, v in cache.items() if k != v}}
+            counts[label] += 1
+    return {"aligned": counts,
+            "new_parapr": {f"{k[0]}->{k[1]}": v for k, v in cache.items() if k[0] != v}}
 
 
 def _iter_content_tables(section_roots):
@@ -369,7 +413,9 @@ def _iter_content_tables(section_roots):
 
 
 def apply_center_cell_text(header_root, section_roots):
-    """본문 콘텐츠 표(제목 박스 제외)의 hp:tbl 내부 subList 문단 전부를 가운데 정렬한다."""
+    """본문 콘텐츠 표(제목 박스 제외)의 hp:tbl 내부 subList 문단 전부를 가운데 정렬한다.
+    붙임·참고 배너 표(R027)의 제목 셀(3번째)은 제외 — R037 양쪽정렬(JUSTIFY)은
+    apply_annex_banner가 배정한다(라벨·스페이서 셀은 CENTER 현행 유지)."""
     p_tag = qn("hp", "p")
     cache = {}
     tables = 0
@@ -377,8 +423,14 @@ def apply_center_cell_text(header_root, section_roots):
     for tbl, is_title in _iter_content_tables(section_roots):
         if is_title:
             continue
+        skip_pids = set()
+        if _is_banner_table(tbl):
+            title_cell = _banner_sorted_cells(tbl)[-1]
+            skip_pids = {id(p) for p in title_cell.iter(p_tag)}
         tables += 1
         for cell_p in tbl.iter(p_tag):
+            if id(cell_p) in skip_pids:
+                continue
             base_id = cell_p.get("paraPrIDRef")
             if base_id is None:
                 continue
@@ -555,6 +607,17 @@ def _is_banner_table(tbl):
         return False
     first_texts = [t.text or "" for t in cells[0].iter(qn("hp", "t"))]
     return bool(BANNER_LABEL_RE.match("".join(first_texts).strip()))
+
+
+def _banner_sorted_cells(tbl):
+    """배너 표(1행 3열)의 셀을 colAddr 순으로 반환한다 — [라벨, 스페이서, 제목]."""
+    row = tbl.find(qn("hp", "tr"))
+    cells = row.findall(qn("hp", "tc"))
+    return sorted(
+        cells,
+        key=lambda tc: int(
+            tc.find(qn("hp", "cellAddr")).get("colAddr", "0")
+            if tc.find(qn("hp", "cellAddr")) is not None else 0))
 
 
 def apply_caption_table_font(header_root, section_roots, pt=12):
@@ -763,15 +826,19 @@ def apply_annex_banner(header_root, section_roots):
     ① 배너 앵커 문단 pageBreakBefore=1 (별도 페이지 시작)
     ② 배너 셀 글자 HY헤드라인M 16pt (라벨 셀은 흰색)
     ③ 셀별 테두리·채움을 양식 '참고1' 실측값으로 배정 (BANNER_CELL_SPECS)
-    ④ 행 높이 28.3pt · 셀 폭 라벨 5968/스페이서 565/제목 잔여 (BANNER_CELL_WIDTHS)."""
+    ④ 행 높이 28.3pt · 셀 폭 라벨 5968/스페이서 565/제목 잔여 (BANNER_CELL_WIDTHS)
+    ⑤ 제목 셀(3번째) 문단 정렬 JUSTIFY(양쪽 정렬) — R037, 사용자 확정 '26.7.28.
+       라벨·스페이서 셀은 CENTER 유지(apply_center_cell_text가 배정, 제목 셀은 거기서 제외)."""
     p_tag = qn("hp", "p")
     char_cache = {}
     color_cache = {}
     pb_cache = {}
     fill_cache = {}
+    align_cache = {}
     banners = 0
     cell_runs = 0
     fills_set = 0
+    title_justified = 0
     for sec_root in section_roots:
         for child in sec_root:
             if child.tag != p_tag:
@@ -790,13 +857,7 @@ def apply_annex_banner(header_root, section_roots):
                 if new_pp != base_pp:
                     child.set("paraPrIDRef", new_pp)
             for tbl in banner_tbls:
-                row = tbl.find(qn("hp", "tr"))
-                cells = row.findall(qn("hp", "tc"))
-                cells_sorted = sorted(
-                    cells,
-                    key=lambda tc: int(
-                        tc.find(qn("hp", "cellAddr")).get("colAddr", "0")
-                        if tc.find(qn("hp", "cellAddr")) is not None else 0))
+                cells_sorted = _banner_sorted_cells(tbl)
                 sz = tbl.find(qn("hp", "sz"))
                 if sz is not None and sz.get("height") is not None:
                     sz.set("height", str(BANNER_ROW_HEIGHT))
@@ -818,6 +879,14 @@ def apply_annex_banner(header_root, section_roots):
                         if cell_widths is not None:
                             csz.set("width", str(cell_widths[idx]))
                     for cell_p in tc.iter(p_tag):
+                        if idx == 2:  # 제목 셀 문단 → JUSTIFY (R037)
+                            base_pid = cell_p.get("paraPrIDRef")
+                            if base_pid is not None:
+                                new_pid = ensure_aligned_clone(
+                                    header_root, base_pid, "JUSTIFY", align_cache)
+                                if new_pid != base_pid:
+                                    cell_p.set("paraPrIDRef", new_pid)
+                                    title_justified += 1
                         for run in cell_p.findall(qn("hp", "run")):
                             base_id = run.get("charPrIDRef")
                             if base_id is None:
@@ -830,7 +899,181 @@ def apply_annex_banner(header_root, section_roots):
                             if new_id != base_id:
                                 run.set("charPrIDRef", new_id)
                                 cell_runs += 1
-    return {"banners": banners, "cell_runs_changed": cell_runs, "fills_set": fills_set}
+    return {"banners": banners, "cell_runs_changed": cell_runs, "fills_set": fills_set,
+            "title_justified": title_justified}
+
+
+# KCA 머리말 배너(로고+슬로건) 주입 자산 — 실무 문서 실측 이식본 (R030, '26.7.28)
+# 원천: 한컴 저장 실사용 보고서(260331_AI OCR 결과 보고.hwpx)의 hp:header ctrl 서브트리.
+# 양식 원형(250609 표준양식 .hwp)도 Section0 첫 문단에 동일 구조(head ctrl: 1×2 표 + gso 2개)를 가진다.
+BANNER_ASSETS_DIR = pathlib.Path(__file__).resolve().parent.parent / "assets" / "kca-header-banner"
+BANNER_BIN_ITEMS = (
+    ("kcaHdrLogo", "kcaHdrLogo.png", "image/png"),      # KCA 로고+기관명 (좌측 셀)
+    ("kcaHdrSlogan", "kcaHdrSlogan.bmp", "image/bmp"),  # Digital WAVE 슬로건 (우측 셀)
+)
+
+
+def _max_id(container, tag):
+    vals = [int(el.get("id")) for el in container.findall(tag)
+            if (el.get("id") or "").isdigit()]
+    return max(vals) if vals else 0
+
+
+def _fix_header_anchor_geometry(header_root, section_roots, header_el):
+    """머리말 배너 앵커 문단의 lineSpacing을 PERCENT 100으로 강제하고, 머리말 subList
+    textWidth를 현재 문서 본문 폭으로 보정한다(R041 — '26.7.28 실기동 A/B 실측 확정).
+
+    제목표 상단 여백의 실원인: 도너(260331 실무본)에서 이식된 앵커 paraPr의
+    lineSpacing 150%가 treatAsChar 배너 표(11.3mm)의 줄 높이를 17.0mm로 부풀려
+    머리말 영역 15mm를 초과시키고, 한글이 신규 조판 시 본문 시작을 그만큼(≈4.6mm)
+    밀어낸다. 100% 치환 시 제목표 위치가 실무본과 0.3mm 이내로 일치한다.
+    배너 셀 내부 문단 paraPr(160%)은 건드리지 않는다 — 앵커 문단만 대상.
+    textWidth 51026(=도너 좌우 15mm 문서의 본문 폭 180mm)도 현 문서 pagePr 실측
+    본문 폭으로 치환한다. 이미 정합이면 무변경(멱등)."""
+    result = {"anchor_parapr": None, "linespacing_fixed": 0, "textwidth_fixed": None}
+    sub = header_el.find(qn("hp", "subList"))
+    if sub is None:
+        return result
+    anchor_p = next((p for p in sub.findall(qn("hp", "p"))
+                     if any(r.find(qn("hp", "tbl")) is not None
+                            for r in p.findall(qn("hp", "run")))), None)
+    if anchor_p is not None:
+        aid = anchor_p.get("paraPrIDRef")
+        result["anchor_parapr"] = aid
+        for pp in header_root.iter(qn("hh", "paraPr")):
+            if pp.get("id") != aid:
+                continue
+            # hp:switch 양 분기(hp:case·hp:default)의 lineSpacing을 모두 치환
+            for ls in pp.iter(qn("hh", "lineSpacing")):
+                if ls.get("type") != "PERCENT" or ls.get("value") != "100":
+                    ls.set("type", "PERCENT")
+                    ls.set("value", "100")
+                    result["linespacing_fixed"] += 1
+            break
+    text_w = 0
+    for sec_root in section_roots:
+        for pagepr in sec_root.iter(qn("hp", "pagePr")):
+            margin = pagepr.find(qn("hp", "margin"))
+            if margin is not None:
+                text_w = (int(pagepr.get("width", "0")) - int(margin.get("left", "0"))
+                          - int(margin.get("right", "0")) - int(margin.get("gutter", "0")))
+            break
+        if text_w:
+            break
+    if text_w > 0 and sub.get("textWidth") not in (None, str(text_w)):
+        result["textwidth_fixed"] = {"old": sub.get("textWidth"), "new": text_w}
+        sub.set("textWidth", str(text_w))
+    return result
+
+
+def apply_header_banner(header_root, section_roots, data):
+    """KCA 머리말 배너(로고 표)를 주입한다(R030 — '26.7.28 제목표 상단여백 3차 조사 확정).
+
+    제목표 상단여백의 잔존 원인: 앵커 줄간격·outMargin·편집용지(R020·R022)를 모두 양식값으로
+    맞춰도 kordoc 산출물에는 머리말(hp:header)이 없어 위 10mm + 머리말 15mm = 25mm가 통째로
+    빈 흰 띠로 남는다. 양식 원형·실무 문서는 이 머리말 영역을 KCA 로고 배너 표(1×2, 높이
+    11.3mm)가 채우므로 제목표 위가 비어 보이지 않는다. 실무 문서에서 이식한 배너를
+    머리말 부재 시 주입한다. 이미 hp:header가 있으면 건너뛴다(멱등)."""
+    hdr_tag = qn("hp", "header")
+    for sec_root in section_roots:
+        for hdr in sec_root.iter(hdr_tag):
+            # 기주입 문서도 앵커 기하(R041)는 보정한다 — 150% 잔존분 소급 수리(멱등)
+            geo = _fix_header_anchor_geometry(header_root, section_roots, hdr)
+            return {"injected": 0, "reason": "header_exists", "geometry": geo}
+    frag_path = BANNER_ASSETS_DIR / "fragment.xml"
+    res_path = BANNER_ASSETS_DIR / "resources.xml"
+    if not (frag_path.exists() and res_path.exists()
+            and all((BANNER_ASSETS_DIR / f).exists() for _, f, _ in BANNER_BIN_ITEMS)):
+        return {"injected": 0, "reason": "assets_missing"}
+
+    borderfills = header_root.find(f".//{qn('hh', 'borderFills')}")
+    paraprops = header_root.find(f".//{qn('hh', 'paraProperties')}")
+    charprops = header_root.find(f".//{qn('hh', 'charProperties')}")
+    if borderfills is None or paraprops is None or charprops is None:
+        return {"injected": 0, "reason": "header_containers_missing"}
+
+    bf_base = _max_id(borderfills, qn("hh", "borderFill"))
+    pp_base = _max_id(paraprops, qn("hh", "paraPr"))
+    cp_base = _max_id(charprops, qn("hh", "charPr"))
+    zmax = 0
+    for sec_root in section_roots:
+        for el in sec_root.iter():
+            z = el.get("zOrder")
+            if z and z.isdigit():
+                zmax = max(zmax, int(z))
+    oid = 9700000  # 문서 내 개체 id와 충돌하지 않는 고정 대역
+    mapping = {
+        "__KHB_BF0__": str(bf_base + 1), "__KHB_BF1__": str(bf_base + 2),
+        "__KHB_BFPLAIN__": "1",  # 도너 '무테두리' borderFill → 대상 기본(전변 NONE) id
+        "__KHB_PP0__": str(pp_base + 1), "__KHB_PP1__": str(pp_base + 2),
+        "__KHB_PP2__": str(pp_base + 3),
+        "__KHB_CP0__": str(cp_base + 1), "__KHB_CP1__": str(cp_base + 2),
+        "__KHB_IMG0__": BANNER_BIN_ITEMS[0][0], "__KHB_IMG1__": BANNER_BIN_ITEMS[1][0],
+        "__KHB_HID__": str(oid + 100),
+        "__KHB_OID0__": str(oid + 1), "__KHB_OID1__": str(oid + 2),
+        "__KHB_OID2__": str(oid + 3),
+        "__KHB_INST0__": str(oid + 4), "__KHB_INST1__": str(oid + 5),
+        "__KHB_Z0__": str(zmax + 1), "__KHB_Z1__": str(zmax + 2),
+        "__KHB_Z2__": str(zmax + 3),
+    }
+
+    def subst(text):
+        for k, v in mapping.items():
+            text = text.replace(k, v)
+        if "__KHB_" in text:
+            raise PostprocessError("header banner 자산 토큰 치환 누락")
+        return text
+
+    res_root = ET.fromstring(subst(res_path.read_text(encoding="utf-8")))
+    appended = {"borderFill": 0, "paraPr": 0, "charPr": 0}
+    for child in list(res_root):
+        if child.tag == qn("hh", "borderFill"):
+            borderfills.append(child)
+            appended["borderFill"] += 1
+        elif child.tag == qn("hh", "paraPr"):
+            paraprops.append(child)
+            appended["paraPr"] += 1
+        elif child.tag == qn("hh", "charPr"):
+            charprops.append(child)
+            appended["charPr"] += 1
+    for container, tag in ((borderfills, qn("hh", "borderFill")),
+                           (paraprops, qn("hh", "paraPr")),
+                           (charprops, qn("hh", "charPr"))):
+        container.set("itemCnt", str(len(container.findall(tag))))
+
+    ns_decl = " ".join(f'xmlns:{p}="{u}"' for p, u in NS.items())
+    wrapper = ET.fromstring(
+        f"<khbWrap {ns_decl}>" + subst(frag_path.read_text(encoding="utf-8")) + "</khbWrap>")
+    ctrl = wrapper[0]  # <hp:ctrl><hp:header>…</hp:header></hp:ctrl>
+
+    first_p = section_roots[0].find(qn("hp", "p"))
+    if first_p is None:
+        return {"injected": 0, "reason": "no_paragraph"}
+    run = first_p.find(qn("hp", "run"))
+    if run is None:
+        return {"injected": 0, "reason": "no_run"}
+    # 양식 원형과 동일하게 secd/cold 계열 ctrl 뒤·표(제목박스) 앞에 배치
+    insert_at = 0
+    for idx, child in enumerate(list(run)):
+        if child.tag in (qn("hp", "secPr"), qn("hp", "ctrl")):
+            insert_at = idx + 1
+    run.insert(insert_at, ctrl)
+
+    # 앵커 lineSpacing 100%·subList textWidth 본문 폭 보정 (R041)
+    geo = _fix_header_anchor_geometry(header_root, section_roots, ctrl.find(qn("hp", "header")))
+
+    for item_id, fname, _mt in BANNER_BIN_ITEMS:
+        data["BinData/" + fname] = (BANNER_ASSETS_DIR / fname).read_bytes()
+    hpf_name = "Contents/content.hpf"
+    if hpf_name in data:
+        hpf = data[hpf_name].decode("utf-8")
+        if "</opf:manifest>" in hpf and BANNER_BIN_ITEMS[0][0] not in hpf:
+            items = "".join(
+                f'<opf:item id="{iid}" href="BinData/{fn}" media-type="{mt}" isEmbeded="1"/>'
+                for iid, fn, mt in BANNER_BIN_ITEMS)
+            data[hpf_name] = hpf.replace("</opf:manifest>", items + "</opf:manifest>").encode("utf-8")
+    return {"injected": 1, "resources_appended": appended,
+            "bin_items": [f for _, f, _ in BANNER_BIN_ITEMS], "geometry": geo}
 
 
 def ensure_charpr_bold(header_root, base_id, cache):
@@ -880,6 +1123,373 @@ def apply_dae_bold(header_root, section_roots):
                     run.set("charPrIDRef", new_id)
                     changed += 1
     return {"dae_found": found, "runs_changed": changed}
+
+
+# ---------------------------------------------------------------------------
+# 캡션 내장 (R034) · 본문 양쪽정렬 (R032) · ＊ 위첨자 (R031) · 괄호 13pt (R033)
+# ---------------------------------------------------------------------------
+
+# hp:caption 원형 — 260331 실무본 실측: side=TOP, outMargin과 inMargin 사이에 위치,
+# 캡션 문단은 CENTER + 볼드 + 12pt (paraPr45 CENTER·charPr49 height=1200+bold)
+CAPTION_ATTRS = {"side": "TOP", "fullSz": "0", "width": "8504", "gap": "850"}
+
+
+def apply_caption_embed(header_root, section_roots):
+    """표 바깥 캡션 문단(`[ … ]`)을 바로 다음 콘텐츠 표의 hp:caption(side=TOP)으로 내장한다
+    (R034 — 사용자 확정 '26.7.28). 실무본 실측 구조: hp:tbl 안 outMargin 다음 위치,
+    subList/p 로 캡션 문단 이동, CENTER + 볼드(크기는 R023 12pt 일괄 처리에 위임).
+    캡션과 표 사이의 빈 문단(캡션→표 스페이서)은 제거한다. 제목 박스·배너 표는 제외."""
+    p_tag = qn("hp", "p")
+    align_cache = {}
+    bold_cache = {}
+    embedded = 0
+    orphans = 0
+    for sec_root in section_roots:
+        children = list(sec_root)
+        remove = []
+        for i, child in enumerate(children):
+            if child.tag != p_tag or classify(child) != "caption":
+                continue
+            # 다음 콘텐츠 문단(빈 문단 건너뜀) 탐색
+            target_tbl = None
+            gap_empties = []
+            for j in range(i + 1, len(children)):
+                nxt = children[j]
+                if nxt.tag != p_tag:
+                    break
+                kind = classify(nxt)
+                if kind == "empty":
+                    gap_empties.append(nxt)
+                    continue
+                if kind == "table":
+                    tbls = [tbl for run in nxt.findall(qn("hp", "run"))
+                            for tbl in run.findall(qn("hp", "tbl"))]
+                    if tbls and not _is_banner_table(tbls[0]):
+                        target_tbl = tbls[0]
+                break
+            if target_tbl is None:
+                orphans += 1
+                continue
+            existing = target_tbl.find(qn("hp", "caption"))
+            if existing is not None:
+                ex_text = "".join(t.text or "" for t in existing.iter(qn("hp", "t"))).strip()
+                if ex_text == para_text(child).strip():
+                    remove.append(child)  # 동일 캡션 기내장 — 중복 문단만 제거(멱등)
+                    remove.extend(gap_empties)
+                else:
+                    orphans += 1
+                continue
+            # 캡션 요소 조립 (실무본 원형: outMargin 다음, inMargin 앞)
+            cap = ET.Element(qn("hp", "caption"), dict(CAPTION_ATTRS))
+            sz = target_tbl.find(qn("hp", "sz"))
+            cap.set("lastWidth", sz.get("width", "0") if sz is not None else "0")
+            sub = ET.SubElement(cap, qn("hp", "subList"), {
+                "id": "", "textDirection": "HORIZONTAL", "lineWrap": "BREAK",
+                "vertAlign": "TOP", "linkListIDRef": "0", "linkListNextIDRef": "0",
+                "textWidth": "0", "textHeight": "0", "hasTextRef": "0", "hasNumRef": "0"})
+            # 캡션 문단을 통째로 이동 — CENTER 정렬 + 볼드 배정
+            base_pp = child.get("paraPrIDRef")
+            if base_pp is not None:
+                new_pp = ensure_aligned_clone(header_root, base_pp, "CENTER", align_cache)
+                if new_pp != base_pp:
+                    child.set("paraPrIDRef", new_pp)
+            for run in child.findall(qn("hp", "run")):
+                base_cp = run.get("charPrIDRef")
+                if base_cp is not None:
+                    new_cp = ensure_charpr_bold(header_root, base_cp, bold_cache)
+                    if new_cp != base_cp:
+                        run.set("charPrIDRef", new_cp)
+            sub.append(child)
+            insert_at = 0
+            for idx, tc in enumerate(list(target_tbl)):
+                if tc.tag in (qn("hp", "sz"), qn("hp", "pos"), qn("hp", "outMargin")):
+                    insert_at = idx + 1
+            target_tbl.insert(insert_at, cap)
+            remove.append(child)
+            remove.extend(gap_empties)
+            embedded += 1
+        for el in remove:
+            sec_root.remove(el)
+    return {"embedded": embedded, "orphan_captions": orphans}
+
+
+JUSTIFY_KINDS = ("dae", "yo", "dash")
+
+
+def apply_body_justify(header_root, section_roots):
+    """본문 계층 문단(□·ㅇ·대시)의 정렬을 JUSTIFY(양쪽 정렬)로 치환한다
+    (R032 — 사용자 확정 '26.7.28). ※·＊ 각주·캡션·발신 줄은 기존 정렬 유지."""
+    p_tag = qn("hp", "p")
+    cache = {}
+    found = 0
+    changed = 0
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag or classify(child) not in JUSTIFY_KINDS:
+                continue
+            found += 1
+            base_id = child.get("paraPrIDRef")
+            if base_id is None:
+                continue
+            new_id = ensure_aligned_clone(header_root, base_id, "JUSTIFY", cache)
+            if new_id != base_id:
+                child.set("paraPrIDRef", new_id)
+                changed += 1
+    return {"found": found, "changed": changed}
+
+
+def ensure_charpr_supscript(header_root, base_id, cache):
+    """base_id charPr에 <hh:supscript/>를 더한 복제본 id를 반환한다(이미 있으면 그대로).
+    위첨자 인코딩 실측: 실무본·260223 AX전략 hwpx 모두 charPr 자식 <hh:supscript/>
+    (height·offset은 그대로 두고 한글이 축소 렌더)."""
+    if base_id in cache:
+        return cache[base_id]
+    charprops = header_root.find(f".//{qn('hh', 'charProperties')}")
+    base = None
+    for cp in charprops.findall(qn("hh", "charPr")):
+        if cp.get("id") == base_id:
+            base = cp
+            break
+    if base is None or base.find(qn("hh", "supscript")) is not None:
+        cache[base_id] = base_id
+        return base_id
+    new_cp = copy.deepcopy(base)
+    max_id = max(int(cp.get("id")) for cp in charprops.findall(qn("hh", "charPr")))
+    new_id = str(max_id + 1)
+    new_cp.set("id", new_id)
+    ET.SubElement(new_cp, qn("hh", "supscript"))
+    charprops.append(new_cp)
+    charprops.set("itemCnt", str(int(charprops.get("itemCnt", "0")) + 1))
+    cache[base_id] = new_id
+    return new_id
+
+
+def _split_run(p, run, segments):
+    """run(자식이 hp:t 하나뿐)을 (text, charpr_id) 시퀀스로 교체한다. 빈 텍스트는 건너뜀."""
+    pos = list(p).index(run)
+    p.remove(run)
+    inserted = 0
+    for text, cp_id in segments:
+        if not text:
+            continue
+        new_run = ET.Element(qn("hp", "run"), {"charPrIDRef": cp_id})
+        t = ET.SubElement(new_run, qn("hp", "t"))
+        t.text = text
+        p.insert(pos + inserted, new_run)
+        inserted += 1
+    return inserted
+
+
+def apply_superscript_star(header_root, section_roots):
+    """본문 서술 중 용어 뒤 ＊ 표지를 위첨자 charPr로 분리한다(R031 — 사용자 확정 '26.7.28).
+    `＊ 용어 : 설명` 각주 문단(선두 ＊)은 평문 유지. 표 셀 내부 문단도 동일 처리."""
+    p_tag = qn("hp", "p")
+    cache = {}
+    stars = 0
+    for sec_root in section_roots:
+        for p in sec_root.iter(p_tag):
+            text = para_text(p).strip()
+            if not text or text.startswith(STAR):
+                continue
+            if STAR not in text:
+                continue
+            for run in list(p.findall(qn("hp", "run"))):
+                t = run.find(qn("hp", "t"))
+                if t is None or not t.text or STAR not in t.text or len(list(run)) != 1:
+                    continue
+                base_cp = run.get("charPrIDRef")
+                if base_cp is None:
+                    continue
+                sup_cp = ensure_charpr_supscript(header_root, base_cp, cache)
+                if sup_cp == base_cp:
+                    continue  # 이미 위첨자 run(멱등)
+                segments = []
+                for piece in re.split(f"({STAR})", t.text):
+                    segments.append((piece, sup_cp if piece == STAR else base_cp))
+                stars += sum(1 for s, _ in segments if s == STAR)
+                _split_run(p, run, segments)
+    return {"stars_superscripted": stars}
+
+
+PAREN_RE = re.compile(r"\([^()]*\)")
+PAREN_KINDS = ("dae", "yo", "dash")
+LEAD_MARKERS = {"", "□", "-", "ㅇ", "○"}
+
+
+def _para_run_infos(p):
+    """문단 직속 run들의 (run, text, start, end, simple) 목록과 전체 텍스트를 반환한다.
+    simple = 자식이 순수 텍스트 hp:t 하나뿐이고 charPrIDRef가 있어 _split_run 분할 가능."""
+    infos = []
+    full = ""
+    for run in p.findall(qn("hp", "run")):
+        t = run.find(qn("hp", "t"))
+        text = (t.text or "") if t is not None else ""
+        simple = (t is not None and len(list(run)) == 1 and len(list(t)) == 0
+                  and run.get("charPrIDRef") is not None)
+        infos.append({"run": run, "text": text, "start": len(full),
+                      "end": len(full) + len(text), "simple": simple})
+        full += text
+    return infos, full
+
+
+def apply_paren_small(header_root, section_roots, pt=13):
+    """본문 계층 문단(□·ㅇ·대시) 서술 중 `(…)` 괄호 구간을 13pt로 축소한다
+    (R033 — 사용자 확정 '26.7.28 / R039 개정 '26.7.28: run 경계를 넘는 구간도 처리).
+    ㅇ 선두 괄호 리드(R016 라벨)는 제외 — 본문 서술이 아니라 볼드 라벨이므로 15pt 유지.
+    표 셀·＊※ 각주·캡션은 대상 아님.
+
+    괄호 구간은 run이 아니라 **문단 전체 텍스트** 기준으로 찾고, 구간에 걸친 run들을
+    각각 분할해 걸친 부분만 각 run 고유 charPr의 13pt 복제본으로 치환한다 — 문장 안
+    볼드(`**T1**` 등)로 run이 쪼개져도 볼드 등 서식은 보존된다(볼드 run 안 괄호는
+    13pt 볼드). cross_run_skipped는 분할 불가 run(중첩 개체 등)에 걸린 구간만 남는다."""
+    height = int(round(pt * 100))
+    p_tag = qn("hp", "p")
+    cache = {}
+    heights = {cp.get("id"): cp.get("height")
+               for cp in header_root.iter(qn("hh", "charPr"))}
+    spans = 0
+    lead_skipped = 0
+    cross_run = 0
+    for sec_root in section_roots:
+        for child in sec_root:
+            if child.tag != p_tag or classify(child) not in PAREN_KINDS:
+                continue
+            infos, full = _para_run_infos(child)
+            if "(" not in full or ")" not in full:
+                continue
+            jobs = []
+            for m in PAREN_RE.finditer(full):
+                if full[:m.start()].strip() in LEAD_MARKERS:
+                    lead_skipped += 1  # ㅇ (교 육) 등 선두 리드 — 제외
+                    continue
+                overlapped = [i for i in infos
+                              if i["text"] and i["end"] > m.start() and i["start"] < m.end()]
+                if not overlapped or not all(i["simple"] for i in overlapped):
+                    cross_run += 1  # 분할 불가 run(그림·중첩 요소 등)에 걸침 — 건너뜀
+                    continue
+                if all(heights.get(i["run"].get("charPrIDRef")) == str(height)
+                       for i in overlapped):
+                    continue  # 이미 전 구간 13pt — 재실행 멱등
+                jobs.append((m.start(), m.end()))
+            if not jobs:
+                continue
+            spans += len(jobs)
+            for info in infos:
+                if not info["text"]:
+                    continue
+                r_s, r_e, text = info["start"], info["end"], info["text"]
+                overlaps = [(max(s, r_s) - r_s, min(e, r_e) - r_s)
+                            for s, e in jobs if e > r_s and s < r_e]
+                if not overlaps:
+                    continue
+                base_cp = info["run"].get("charPrIDRef")
+                small_cp = ensure_charpr_sized(header_root, base_cp, height, cache)
+                if small_cp == base_cp:
+                    continue  # 이 run은 이미 13pt — 그대로 둔다
+                segments = []
+                pos = 0
+                for s, e in overlaps:
+                    segments.append((text[pos:s], base_cp))
+                    segments.append((text[s:e], small_cp))
+                    pos = e
+                segments.append((text[pos:], base_cp))
+                _split_run(child, info["run"], segments)
+    return {"paren_spans": spans, "lead_skipped": lead_skipped, "cross_run_skipped": cross_run,
+            "height": height}
+
+
+# '특히 강조' = 노란색 음영 하이라이트 (R040 — 사용자 확정 '26.7.28).
+# 인코딩 실측: 260331 실무본 'AI검증 후 최종결과물 변환' run(charPr id=82) —
+# charPr 속성 shadeColor="#FFFF00" + <hh:bold/> (높이·폰트는 본문 그대로).
+# hwpx XML 색은 #RRGGBB 직독 — #FFFF00=노랑(사용자 관찰 정합). COLORREF 0x00BBGGRR
+# 바이트 반전(R027)은 hwp OLE 바이너리 전용이며 hwpx XML에는 적용되지 않는다
+# (교차검증: 같은 실무본 제목박스 그라데이션 #3057B9가 RGB 직독으로 남색 — BGR로 읽으면
+# #B95730 적갈색이 되어 실물과 불일치).
+HIGHLIGHT_RE = re.compile(r"==(.+?)==")
+HIGHLIGHT_SHADE = "#FFFF00"
+
+
+def ensure_charpr_highlight(header_root, base_id, cache):
+    """base_id charPr에 shadeColor=#FFFF00(노란 음영)과 볼드를 더한 복제본 id를 반환한다
+    (이미 두 속성을 모두 가지면 그대로). 폰트·크기 등 나머지 서식은 보존한다."""
+    if base_id in cache:
+        return cache[base_id]
+    charprops = header_root.find(f".//{qn('hh', 'charProperties')}")
+    base = None
+    for cp in charprops.findall(qn("hh", "charPr")):
+        if cp.get("id") == base_id:
+            base = cp
+            break
+    if base is None or (base.get("shadeColor") == HIGHLIGHT_SHADE
+                        and base.find(qn("hh", "bold")) is not None):
+        cache[base_id] = base_id
+        return base_id
+    new_cp = copy.deepcopy(base)
+    max_id = max(int(cp.get("id")) for cp in charprops.findall(qn("hh", "charPr")))
+    new_id = str(max_id + 1)
+    new_cp.set("id", new_id)
+    new_cp.set("shadeColor", HIGHLIGHT_SHADE)
+    if new_cp.find(qn("hh", "bold")) is None:
+        ET.SubElement(new_cp, qn("hh", "bold"))
+    charprops.append(new_cp)
+    charprops.set("itemCnt", str(int(charprops.get("itemCnt", "0")) + 1))
+    cache[base_id] = new_id
+    return new_id
+
+
+def apply_highlight(header_root, section_roots):
+    """초안 `==문구==` 하이라이트 마커를 노란 음영+볼드 run으로 치환한다(R040 —
+    사용자 확정 '26.7.28, 260331 실무본 실측 인코딩: charPr shadeColor=#FFFF00 + bold).
+    마커(`==`)는 제거하고 안쪽 구간만 하이라이트 charPr 복제본으로 분할 배정한다 —
+    구간이 run 경계를 넘어도(안쪽 볼드 등) run별 분할로 처리하고 각 run 서식은 보존.
+    마커 잔존 방지를 위해 표 셀 포함 전체 문단을 훑는다. 분할 불가 run에 걸친 마커와
+    짝이 안 맞는 `==`는 그대로 두고 보고한다(초안 lint highlight-unpaired가 1차 방어)."""
+    p_tag = qn("hp", "p")
+    cache = {}
+    highlights = 0
+    skipped = 0
+    for sec_root in section_roots:
+        for child in sec_root.iter(p_tag):
+            infos, full = _para_run_infos(child)
+            if "==" not in full:
+                continue
+            jobs = []  # (전체 시작, 전체 끝, 내용 시작, 내용 끝)
+            for m in HIGHLIGHT_RE.finditer(full):
+                overlapped = [i for i in infos
+                              if i["text"] and i["end"] > m.start() and i["start"] < m.end()]
+                if not overlapped or not all(i["simple"] for i in overlapped):
+                    skipped += 1
+                    continue
+                jobs.append((m.start(), m.end(), m.start(1), m.end(1)))
+            if not jobs:
+                continue
+            highlights += len(jobs)
+            for info in infos:
+                if not info["text"]:
+                    continue
+                r_s, r_e, text = info["start"], info["end"], info["text"]
+                marks = []  # run-로컬 (시작, 끝, 종류) — drop=마커 토큰, hl=하이라이트 내용
+                for s, e, cs, ce in jobs:
+                    for a, b, kind in ((s, cs, "drop"), (cs, ce, "hl"), (ce, e, "drop")):
+                        a2, b2 = max(a, r_s), min(b, r_e)
+                        if a2 < b2:
+                            marks.append((a2 - r_s, b2 - r_s, kind))
+                if not marks:
+                    continue
+                marks.sort()
+                base_cp = info["run"].get("charPrIDRef")
+                hl_cp = ensure_charpr_highlight(header_root, base_cp, cache)
+                segments = []
+                pos = 0
+                for a, b, kind in marks:
+                    if a > pos:
+                        segments.append((text[pos:a], base_cp))
+                    if kind == "hl":
+                        segments.append((text[a:b], hl_cp))
+                    pos = b
+                segments.append((text[pos:], base_cp))
+                _split_run(child, info["run"], segments)
+    return {"highlights": highlights, "skipped": skipped, "shade": HIGHLIGHT_SHADE}
 
 
 # KCA 양식 편집용지 여백 (HWPUNIT, 7200/inch): 좌우 20mm·위 10mm·아래 15mm·머리말 15mm·꼬리말 10mm
@@ -1012,6 +1622,117 @@ def ensure_charpr_sized(header_root, base_id, height, cache):
     charprops.set("itemCnt", str(int(charprops.get("itemCnt", "0")) + 1))
     cache[key] = new_id
     return new_id
+
+
+
+FIT_PAGE_SLACK = 283  # HWPUNIT(1.0mm) — R042: 총 폭은 본문 폭 '미만'이어야 한다(같으면 줄바꿈)
+
+
+def apply_fit_page_width(section_roots):
+    """표(머리말 배너·제목 박스 포함)의 총 폭이 본문 폭 - FIT_PAGE_SLACK을 넘으면 비례 축소한다.
+
+    근거(R036): KCA 실보고서 12건 전수 실측 결과 머리말 배너 표 폭 == 본문 폭이 항상 성립한다
+    (좌우 20mm 문서는 배너 170mm, 좌우 15mm 문서는 배너 179mm+여백 = 180mm). 배너 자산을
+    좌우 15mm 문서에서 이식하면 좌우 20mm 문서에서 10mm 초과해 머리말이 밀리고 제목 박스
+    상단에 여백이 남는다. 표 폭·셀 폭·내부 이미지 크기를 같은 비율로 줄여 정합을 맞춘다.
+
+    정정(R042, '26.7.28 6차): 축소 목표가 '본문 폭과 정확히 같게'(여유 0)면 안 된다 — 같은
+    문단에 표보다 앞선 요소가 있으면 한컴 엔진이 표를 다음 줄로 내려 표 위에 15pt 빈 줄이
+    생긴다(제목표 실기동 A/B: slack 0 → 상단 30.29mm / 폭 축소 → 25.03mm). 그래서 목표를
+    본문 폭 - FIT_PAGE_SLACK(283 hu = 1.0mm — 제목표·배너 자산의 outMargin 퀀텀과 동일한
+    문서 그리드 최소 단위, 축소가 눈에 안 띄면서 등호 실패에서 충분히 멀다)으로 잡고,
+    slack이 이미 FIT_PAGE_SLACK 이상인 표(본문 표 slack 1801 등)는 건드리지 않는다.
+    축소 시 내부 그림의 파생 캐시(scaMatrix e1/e5 = curSz/orgSz, rotationInfo center =
+    curSz/2)도 재계산한다 — sz·curSz만 줄이면 도너 원값 캐시가 스테일로 남는다.
+    """
+    adjusted = []
+    for sec_root in section_roots:
+        pagepr = None
+        for pp in sec_root.iter(qn("hp", "pagePr")):
+            pagepr = pp
+            break
+        if pagepr is None:
+            continue
+        margin = pagepr.find(qn("hp", "margin"))
+        if margin is None:
+            continue
+        text_w = (int(pagepr.get("width", "0")) - int(margin.get("left", "0"))
+                  - int(margin.get("right", "0")) - int(margin.get("gutter", "0")))
+        if text_w <= 0:
+            continue
+        limit = text_w - FIT_PAGE_SLACK    # R042: 총 폭 상한(미만이 아니라 이하 — slack ≥ 566 보장)
+        if limit <= 0:
+            continue
+        for tbl in sec_root.iter(qn("hp", "tbl")):
+            sz = tbl.find(qn("hp", "sz"))
+            om = tbl.find(qn("hp", "outMargin"))
+            if sz is None:
+                continue
+            tw = int(sz.get("width", "0"))
+            om_l = int(om.get("left", "0")) if om is not None else 0
+            om_r = int(om.get("right", "0")) if om is not None else 0
+            total = tw + om_l + om_r
+            if total <= limit or tw <= 0:
+                continue
+            target = limit - om_l - om_r
+            if target <= 0:            # 여백만으로도 초과 — 여백을 0으로 내리고 재계산
+                if om is not None:
+                    om.set("left", "0")
+                    om.set("right", "0")
+                om_l = om_r = 0
+                target = limit
+            ratio = target / tw
+            sz.set("width", str(target))
+            # 셀 폭: 마지막 셀에 반올림 잔차를 몰아 합계를 정확히 맞춘다
+            rows = tbl.findall(qn("hp", "tr"))
+            for tr in rows:
+                cells = tr.findall(qn("hp", "tc"))
+                widths, acc = [], 0
+                for tc in cells:
+                    csz = tc.find(qn("hp", "cellSz"))
+                    widths.append(int(csz.get("width", "0")) if csz is not None else 0)
+                new, run_sum = [], 0
+                for i, w in enumerate(widths):
+                    v = target - run_sum if i == len(widths) - 1 else int(round(w * ratio))
+                    new.append(max(v, 1))
+                    run_sum += new[-1]
+                for tc, v in zip(cells, new):
+                    csz = tc.find(qn("hp", "cellSz"))
+                    if csz is not None:
+                        csz.set("width", str(v))
+            # 셀 안 그림도 같은 비율로 축소 (배너 로고·슬로건)
+            pics = 0
+            for pic in tbl.iter(qn("hp", "pic")):
+                for tag in ("curSz", "sz"):
+                    el = pic.find(qn("hp", tag))
+                    if el is None:
+                        continue
+                    for attr in ("width", "height"):
+                        v = el.get(attr)
+                        if v is not None:
+                            el.set(attr, str(max(int(round(int(v) * ratio)), 1)))
+                # 파생 캐시 재계산 (R042 위생): scaMatrix e1/e5 = curSz/orgSz,
+                # rotationInfo center = curSz/2 — sz·curSz만 줄이면 도너 원값이 스테일로 남는다.
+                # transMatrix·scaMatrix의 e3/e6은 offset 파생이라 (offset 불변이므로) 건드리지 않는다.
+                org = pic.find(qn("hp", "orgSz"))
+                cur = pic.find(qn("hp", "curSz"))
+                if org is not None and cur is not None:
+                    ow, oh = int(org.get("width", "0")), int(org.get("height", "0"))
+                    cw, ch = int(cur.get("width", "0")), int(cur.get("height", "0"))
+                    ri = pic.find(qn("hp", "renderingInfo"))
+                    sca = ri.find(qn("hc", "scaMatrix")) if ri is not None else None
+                    if sca is not None and ow > 0 and oh > 0:
+                        sca.set("e1", f"{cw / ow:.6f}")
+                        sca.set("e5", f"{ch / oh:.6f}")
+                    rot = pic.find(qn("hp", "rotationInfo"))
+                    if rot is not None:
+                        rot.set("centerX", str(cw // 2))
+                        rot.set("centerY", str(ch // 2))
+                pics += 1
+            adjusted.append({"before_mm": round(total / 7200 * 25.4, 1),
+                             "after_mm": round((target + om_l + om_r) / 7200 * 25.4, 1),
+                             "ratio": round(ratio, 4), "pics_scaled": pics})
+    return {"tables_fitted": len(adjusted), "detail": adjusted}
 
 
 def apply_sender_size(header_root, section_roots, pt):
@@ -1181,10 +1902,12 @@ def serialize_xml(root):
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + body).encode("utf-8")
 
 
-def process_file(path, star=False, spacing=False, sender_size=None, star_indent=None):
-    if not (star or spacing or sender_size is not None or star_indent is not None):
+def process_file(path, star=False, spacing=False, sender_size=None, star_indent=None,
+                 header_banner=False):
+    if not (star or spacing or sender_size is not None or star_indent is not None
+            or header_banner):
         raise PostprocessError(
-            "--star-footnote/--spacing/--sender-size/--star-indent/--all 중 최소 하나는 지정해야 합니다"
+            "--star-footnote/--spacing/--sender-size/--star-indent/--header-banner/--all 중 최소 하나는 지정해야 합니다"
         )
 
     with zipfile.ZipFile(path) as z:
@@ -1210,6 +1933,14 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
             any_change = True
 
     if spacing:
+        # 캡션 내장(R034)은 스페이서 계산 전에 수행 — 캡션 문단이 사라지면
+        # X→caption·caption→table 전환이 X→table 전환으로 바뀐다
+        cer = apply_caption_embed(header_root, list(section_roots.values()))
+        summary["caption_embed"] = cer
+        if cer["embedded"] > 0:
+            any_target_found = True
+            any_change = True
+
         r = apply_spacing(header_root, list(section_roots.values()))
         summary["spacing"] = {"inserted": r["inserted"], "modified": r["modified"],
                                "events": r["events"]}
@@ -1224,14 +1955,35 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
             any_target_found = True
             any_change = True
         summary["effective_gaps"] = effective_gaps(header_root, list(section_roots.values()))
-        cr = apply_center_tables(header_root, list(section_roots.values()))
-        summary["center_tables"] = cr
-        if cr["centered"]["caption"] or cr["centered"]["table"]:
+        cr = apply_table_alignment(header_root, list(section_roots.values()))
+        summary["table_alignment"] = cr
+        if any(cr["aligned"].values()):
             any_target_found = True
             any_change = True
         sh = apply_space_hierarchy(header_root, list(section_roots.values()))
         summary["space_hierarchy"] = sh
         if sh["prefixed"] or sh["flattened"]:
+            any_target_found = True
+            any_change = True
+        bj = apply_body_justify(header_root, list(section_roots.values()))
+        summary["body_justify"] = bj
+        if bj["found"] > 0:
+            any_target_found = True
+        if bj["changed"] > 0:
+            any_change = True
+        hl = apply_highlight(header_root, list(section_roots.values()))
+        summary["highlight"] = hl
+        if hl["highlights"] > 0:
+            any_target_found = True
+            any_change = True
+        ps = apply_paren_small(header_root, list(section_roots.values()))
+        summary["paren_small"] = ps
+        if ps["paren_spans"] > 0:
+            any_target_found = True
+            any_change = True
+        ss = apply_superscript_star(header_root, list(section_roots.values()))
+        summary["superscript_star"] = ss
+        if ss["stars_superscripted"] > 0:
             any_target_found = True
             any_change = True
         pm = apply_page_margins(list(section_roots.values()))
@@ -1277,7 +2029,7 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
         summary["annex_banner"] = abr
         if abr["banners"] > 0:
             any_target_found = True
-        if abr["cell_runs_changed"] > 0:
+        if abr["cell_runs_changed"] > 0 or abr["title_justified"] > 0:
             any_change = True
 
     if sender_size is not None:
@@ -1297,6 +2049,23 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
         if sir["changed"] > 0:
             any_change = True
 
+    if header_banner:
+        hbr = apply_header_banner(header_root, list(section_roots.values()), data)
+        summary["header_banner"] = hbr
+        if hbr.get("injected"):
+            any_target_found = True
+            any_change = True
+        geo = hbr.get("geometry") or {}
+        if geo.get("linespacing_fixed") or geo.get("textwidth_fixed"):
+            any_target_found = True
+            any_change = True
+
+    fit = apply_fit_page_width(list(section_roots.values()))
+    summary["fit_page_width"] = fit
+    if fit.get("tables_fitted"):
+        any_target_found = True
+        any_change = True
+
     data["Contents/header.xml"] = serialize_xml(header_root)
     for name, root in section_roots.items():
         data[name] = serialize_xml(root)
@@ -1310,6 +2079,13 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
                 zi.compress_type = info.compress_type
                 zi.external_attr = info.external_attr
                 zout.writestr(zi, data[info.filename])
+            existing = {info.filename for info in infos}
+            for name in data:
+                if name in existing:
+                    continue
+                zi = zipfile.ZipInfo(name, date_time=infos[0].date_time)
+                zi.compress_type = zipfile.ZIP_DEFLATED
+                zout.writestr(zi, data[name])
         os.replace(tmp_path, path)
     except Exception:
         if os.path.exists(tmp_path):
@@ -1321,7 +2097,7 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
     return summary
 
 
-USAGE = ("usage: postprocess_hwpx.py <file.hwpx> [--star-footnote] [--spacing] [--all]\n"
+USAGE = ("usage: postprocess_hwpx.py <file.hwpx> [--star-footnote] [--spacing] [--header-banner] [--all]\n"
          "                          [--sender-size PT] [--star-indent LEFT,INTENT]\n"
          "exit 0: 변경 적용 완료 | exit 1: 대상 없음(무변경) | exit 2: 인자/파일/구조 오류")
 
@@ -1331,8 +2107,8 @@ def main(argv):
         print(USAGE, file=sys.stderr)
         return 2
     path, rest = argv[0], argv[1:]
-    valid_bool = {"--star-footnote", "--spacing", "--all"}
-    star = spacing = all_flag = False
+    valid_bool = {"--star-footnote", "--spacing", "--header-banner", "--all"}
+    star = spacing = all_flag = header_banner = False
     sender_size = None
     star_indent = None
     i = 0
@@ -1343,6 +2119,8 @@ def main(argv):
                 star = True
             elif arg == "--spacing":
                 spacing = True
+            elif arg == "--header-banner":
+                header_banner = True
             else:
                 all_flag = True
             i += 1
@@ -1376,12 +2154,15 @@ def main(argv):
 
     star = star or all_flag
     spacing = spacing or all_flag
-    if not (star or spacing or sender_size is not None or star_indent is not None):
+    header_banner = header_banner or all_flag
+    if not (star or spacing or sender_size is not None or star_indent is not None
+            or header_banner):
         print(USAGE, file=sys.stderr)
         return 2
     try:
         summary = process_file(path, star=star, spacing=spacing,
-                                sender_size=sender_size, star_indent=star_indent)
+                                sender_size=sender_size, star_indent=star_indent,
+                                header_banner=header_banner)
     except PostprocessError as e:
         print(json.dumps({"error": str(e)}, ensure_ascii=False))
         return 2

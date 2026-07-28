@@ -3,6 +3,7 @@
 import sys, json, re
 
 LEAD = re.compile(r"^\s*(□|ㅇ|○|-|※|＊|\d+\.|\[\d+\])\s")   # 항목 선두 허용 기호 (반각 * 제외 — 각주는 전각 ＊만 합법)
+HIGHLIGHT_TOKEN = re.compile(r"==")  # `==특히 강조==` 하이라이트 마커(R040) — 짝수 개만 합법
 TABLE = re.compile(r"^\s*\|")
 BOLD = re.compile(r"\*\*[^*\n]+\*\*")
 INLINE_BAD = re.compile(r"(?:\s-\s|(?<!\*)\*(?!\*)|`|^#{1,6}\s|\s>\s)")
@@ -20,6 +21,9 @@ def lint_text(text):
     for i, line in enumerate(text.splitlines(), 1):
         if not line.strip():
             continue
+        # `==` 하이라이트 마커(R040)는 한 줄 안에서 짝이 맞아야 한다 — 홀수면 잔존 위험
+        if len(HIGHLIGHT_TOKEN.findall(line)) % 2 == 1:
+            out.append({"line": i, "rule": "highlight-unpaired", "text": line.strip()[:80]})
         if TABLE.match(line):
             cols = len([c for c in line.strip().strip("|").split("|")])
             if cols > 6 and not set(line.strip()) <= set("|- :"):

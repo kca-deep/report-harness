@@ -79,3 +79,10 @@ def test_grade_label_not_html():           # <A 등급> 등 단일문자+공백 
 
 def test_second_box_on_valid_line_detected():  # 선두 □ 합법 + 같은 줄 두 번째 □ 검출
     assert "misplaced-marker" in rules(lint_text("□ 첫 항목: 세부는 별도 □ 서식 참조\n"))
+
+def test_highlight_marker_allowed():       # R040: ==특히 강조== 하이라이트 문법 합법
+    assert lint_text("ㅇ 핵심은 ==특히 강조== 사항\n") == []
+    assert lint_text("ㅇ **볼드**와 ==하이라이트== 병용\n") == []
+
+def test_highlight_unpaired_detected():    # 짝 안 맞는 == 는 잔존 위험 — 위반
+    assert "highlight-unpaired" in rules(lint_text("ㅇ 핵심은 ==특히 강조 사항\n"))

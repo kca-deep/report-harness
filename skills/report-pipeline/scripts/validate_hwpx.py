@@ -79,6 +79,8 @@ def has_markdown_leftover(line):
         return True
     if INLINE_DASH.search(body):
         return True
+    if "==" in body:  # 하이라이트 마커(R040) 잔존 — postprocess 치환 실패 검출
+        return True
     return False
 
 def compare_texts(src, rt):

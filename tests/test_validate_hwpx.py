@@ -89,3 +89,7 @@ def test_numbers_mode_ignores_korean_dates(tmp_path):
     vals = {v for i in issues for v in i["values"]}
     assert "26.7" not in vals and "26.1" not in vals   # 날짜 표기는 수치 아님
     assert "502" in vals                                # 실수치는 검출 유지
+
+def test_highlight_marker_leftover_detected():   # R040: 되읽기에 == 마커 잔존 시 검출
+    issues = compare_texts("ㅇ 핵심 강조 문구\n", "ㅇ 핵심 ==강조== 문구\n")
+    assert any(i["rule"] == "markdown-leftover" for i in issues)
