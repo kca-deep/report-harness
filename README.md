@@ -255,3 +255,12 @@ python3 -m pytest -q
 
 참조 문서 간 정합성(`test_references_consistency.py`), 플러그인·마켓플레이스 매니페스트 구조와
 버전 일치(`test_plugin_structure.py`), 후처리 규칙 회귀(`test_postprocess_hwpx.py`)를 포함한다.
+
+---
+
+## 라이선스
+
+MIT © 2026 bcchung81 — 전문은 [LICENSE](LICENSE).
+
+번들된 `skills/humanizer/`는 MIT © DaleSeo의 별도 저작물이며 원본 라이선스 고지를
+`skills/humanizer/LICENSE`로 유지한다.

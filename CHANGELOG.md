@@ -9,6 +9,12 @@
 - 동기화 부채 해소: installed↔repo (`inject_images.py`·`assets/kca-header-banner/` repo 누락분 복사)
 - 테스트 118 → 142
 
+## 0.3.1 (2026-07-29)
+- **MIT 라이선스 명문화**: 루트 `LICENSE` 신설 + `plugin.json` `license: "MIT"` + README 절 추가.
+  공개 저장소에 라이선스가 없어 법적으로 all rights reserved이던 상태를 해소(포크·수정·재배포
+  권리 부여). 번들 서드파티 `skills/humanizer/`(MIT © DaleSeo)는 원본 고지를 유지하고
+  루트 LICENSE에 별도 명시. 회귀 가드 `test_license_present_and_declared` 추가
+
 ## 0.3.0 (2026-07-29)
 - **MCP 번들**: `.mcp.json` 신설 — `kordoc`(필수, 키 불필요)·`korean-law`(선택) 2종이 플러그인
   설치 시 함께 붙는다. 종전에는 필수 의존성인 kordoc을 사용자가 문서만 보고 직접 설치해야 했다.

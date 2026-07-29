@@ -7,6 +7,17 @@ def test_plugin_manifest_valid():
     assert "version" in m and "description" in m
 
 
+def test_license_present_and_declared():
+    """공개 배포판은 라이선스가 없으면 법적으로 all rights reserved가 된다."""
+    text = (ROOT / "LICENSE").read_text(encoding="utf-8")
+    assert "MIT License" in text and "Copyright (c)" in text
+    plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())
+    assert plugin["license"] == "MIT"
+    # 번들 서드파티(humanizer)의 별도 라이선스 고지가 유지되는지
+    assert (ROOT / "skills/humanizer/LICENSE").is_file()
+    assert "DaleSeo" in text
+
+
 def test_mcp_bundle_valid():
     """번들 MCP는 kordoc(필수)·korean-law(선택) 둘뿐이며, 인증키를 값으로 박아두면 안 된다."""
     mcp = json.loads((ROOT / ".mcp.json").read_text())
