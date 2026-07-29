@@ -148,8 +148,12 @@ mcp__kordoc__patch_document(
 
 ```
 python3 skills/report-pipeline/scripts/postprocess_hwpx.py \
-    {work_dir}/final/{제목}.hwpx --all
+    {work_dir}/final/{제목}.hwpx --all --sender-size 12
 ```
+
+**`--sender-size 12`를 빠뜨리지 말 것** — `--all`은 `--star-footnote`·`--spacing`·`--header-banner`
+셋만 켠다(`main()` 실측). `--sender-size`는 값이 필요해 `--all`에 포함되지 않으므로, 생략하면
+R018(발신 줄 12pt)이 영구 미적용된 채로 §4 검증을 통과해 버린다.
 
 - **`--star-footnote` (R011)**: ＊ 시작 문단의 run `charPrIDRef`를 참고 스타일(header.xml에서
   height=1300·fontRef=맑은고딕 계열 탐색)로 치환한다. kordoc은 ※만 참고 스타일로 인식하고
@@ -160,6 +164,9 @@ python3 skills/report-pipeline/scripts/postprocess_hwpx.py \
   줄인 빈 문단)으로 재현한다. 전환 지점에 이미 빈 문단이 있으면 그 charPr 높이를 치환하고,
   없으면(= kordoc `generate_document` 산출물의 표준 상태) 새 스페이서 문단을 삽입한다. 확정값은
   format-profile.kca.md §7 참조.
+- **`--sender-size N` (R018)**: 발신 줄(`classify=="sending"`) 문단 run들의 charPr을 폰트는
+  유지한 채 높이만 N(pt)로 치환한다. **값 인자가 필요해 `--all`에 포함되지 않는다** — KCA
+  양식 실측 확정값 12pt를 위 호출처럼 매번 명시해야 한다(`--sender-size 12`).
 - **표 캡션 내장 (R034, '26.7.28 사용자 확정)**: 표 바깥 캡션 문단(`[ … ]`)을 바로 다음
   콘텐츠 표의 `hp:caption`(side=TOP — 260331 실무본 실측 원형: outMargin 다음 위치)으로
   옮기고 CENTER+볼드를 배정한다(크기는 R023 12pt 일괄 처리). 캡션↔표 사이 스페이서는
@@ -207,12 +214,15 @@ python3 skills/report-pipeline/scripts/postprocess_hwpx.py \
   그리지 않으므로 렌더만으로 상단여백·캡션·배너 페이지 시작을 판정하지 말 것.
 - **표 폭 본문 정합 (R036·R042, '26.7.28 6차 정정)**: 표 총 폭(sz + outMargin 좌우)이
   본문 폭 − 283 hu(1.0mm)를 넘으면 표 폭·셀 폭·내부 그림을 같은 비율로 축소해 본문 폭
-  **'미만'**으로 맞춘다(`apply_fit_page_width`, --all 포함. 셀 폭 합 == 표 sz 정확 일치).
+  **'미만'**으로 맞춘다(`apply_fit_page_width`. 셀 폭 합 == 표 sz 정확 일치).
   R036의 '이내'(정확히 같게)가 slack 0을 만들면 같은 문단에 선행 요소가 있을 때 한컴이
   표를 다음 줄로 내려 표 위에 15pt 빈 줄이 생긴다 — 6차 확정된 제목표 상단 여백의 정체
   (실기동 30.29 → 25.02mm, R042). 그림 축소 시 파생 캐시(scaMatrix e1/e5 = curSz/orgSz·
   rotationInfo center = curSz/2)도 재계산한다(스테일 방지). slack이 이미 283 hu 이상인
   표는 비대상(멱등). 이 결함은 정적 XML로 판정 불가 — 한글 실기동 계측 필요.
+  **이 처리만은 플래그와 무관하게 항상 실행된다** — `process_file`이 모든 조건 블록 바깥에서
+  호출한다(실측). `--sender-size`만 준 호출에서도 표 폭이 조정되므로, 폭 조정을 원치 않는
+  중간 산출물에는 이 스크립트를 아예 돌리지 말 것.
 - **표 캡션·셀 12pt (R023)**: 캡션(내장 hp:caption 포함)과 본문 콘텐츠 표(제목 박스 제외) 셀
   문단의 charPr을 폰트 유지·높이 1200(12pt)으로 치환한다.
 - **□ 절 제목 볼드 (R024)**: dae 문단 run charPr에 `<hh:bold/>` 변형을 배정한다.
@@ -228,10 +238,12 @@ python3 skills/report-pipeline/scripts/postprocess_hwpx.py \
   정렬을 JUSTIFY로 배정한다(`apply_annex_banner` ⑤). 라벨·스페이서 셀은 셀 텍스트 가운데
   정렬(CENTER) 현행 유지 — `apply_center_cell_text`는 배너 제목 셀을 제외한다(R023의 배너
   제외와 같은 패턴). 결과 요약 `annex_banner.title_justified`로 치환 문단 수를 보고한다.
-- **`--all`**은 두 기능을 모두 적용하고 zip을 1회만 재작성한다(항목 순서·mimetype 보존).
-  결과 요약(치환 건수·삽입/치환 스페이서 이벤트 목록)을 JSON으로 stdout에 낸다.
-- exit 0: 변경 적용 완료. exit 1: 대상 없음(＊ 문단·전환 지점 모두 미발견 — 잘못된 파일을
-  가리켰을 가능성, 원인 확인). exit 2: 인자·파일·zip/xml 구조 오류.
+- **`--all`**은 `--star-footnote`·`--spacing`·`--header-banner` **세 플래그**를 켜고 zip을
+  1회만 재작성한다(항목 순서·mimetype 보존). 값 인자가 필요한 `--sender-size`·`--star-indent`는
+  포함되지 않는다. 결과 요약(치환 건수·삽입/치환 스페이서 이벤트 목록)을 JSON으로 stdout에 낸다.
+- exit 0: 변경 적용 완료. exit 1: **적용한 모든 처리에서 대상 0건**(＊ 문단·전환 지점·배너·
+  폭 초과 표 어느 것도 미발견 — 잘못된 파일을 가리켰을 가능성, 원인 확인).
+  exit 2: 인자·파일·zip/xml 구조 오류.
 - 이 단계 이후 §4 구조 검증(`validate_hwpx.py structural`)을 재실행해 zip이 여전히 정상인지
   확인한다.
 
@@ -321,4 +333,10 @@ python3 skills/report-pipeline/scripts/validate_hwpx.py \
 | `validate_hwpx.py compare` | `validate_hwpx.py compare <src.md> <rt.md>` | 전항목 일치(`issues:[]`) | 불일치 발견 | 인자 부족(파일 접근 오류 시도 exit 2) |
 | `validate_hwpx.py numbers` | `validate_hwpx.py numbers <draft.md> <research_dir>` | 초안 수치 전부 근거 있음(`issues:[]`) | 근거 없는 수치 발견(`numbers-unsourced`) | 인자 부족 |
 | `check_image_size.py` | `check_image_size.py <img> [--max-w-mm 170] [--max-h-mm 90] [--dpi 96]` | 규격 이내(`fits:true`) | 규격 초과(`fits:false`) | 포맷 인식 실패 등 예외 |
-| `postprocess_hwpx.py` | `postprocess_hwpx.py <file.hwpx> [--star-footnote] [--spacing] [--all]` | 변경 적용 완료(요약 JSON) | 대상 없음(＊ 문단·전환 지점 모두 미발견) | 인자/파일/zip·xml 구조 오류(참고 charPr 미발견 포함) |
+| `postprocess_hwpx.py` | `postprocess_hwpx.py <file.hwpx> [--star-footnote] [--spacing] [--header-banner] [--all] [--sender-size PT] [--star-indent LEFT,INTENT]` | 변경 적용 완료(요약 JSON) | 적용한 모든 처리에서 대상 0건 | 인자/파일/zip·xml 구조 오류(참고 charPr 미발견 포함) |
+
+- `postprocess_hwpx.py` 보충: `--all` = `--star-footnote`+`--spacing`+`--header-banner`.
+  값 인자가 필요한 `--sender-size`·`--star-indent`는 `--all`에 포함되지 않으며, 플래그를 하나도
+  주지 않으면 exit 2다. `apply_fit_page_width`(R036·R042)는 플래그와 무관하게 항상 실행된다.
+  `--star-indent`는 CLI에 남아 있으나 **R019에서 폐기된 훅**이다 — 내어쓰기는 `--spacing`
+  묶음이 처리하므로 표준 절차(§3.5)에서 쓰지 않는다.

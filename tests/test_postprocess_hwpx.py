@@ -1528,3 +1528,217 @@ def test_fit_page_width_rescales_pic_derived_cache():
     # 위치 파생이 아닌 항목은 불변: transMatrix는 그대로
     trans = pic.find(ph.qn("hp", "renderingInfo")).find(ph.qn("hc", "transMatrix"))
     assert trans.get("e3") == "0" and trans.get("e6") == "0"
+
+
+# --- R031 서술 중 ＊ 위첨자 ---------------------------------------------------
+# rules-seed.md R031: "본문 서술 중 용어 뒤 ＊ 표지는 위첨자 — charPr에 <hh:supscript/>
+# 자식 추가한 복제본으로 run 분리(높이·offset은 유지). 하단 `＊ 용어 : 설명` 각주 문단
+# (선두 ＊)은 평문 유지(R011 참고 charPr 13pt 그대로)."
+
+def _charpr_supscript(hdr_root):
+    """charPr id → <hh:supscript/> 자식 보유 여부"""
+    return {cp.get("id"): cp.find(ph.qn("hh", "supscript")) is not None
+            for cp in hdr_root.iter(ph.qn("hh", "charPr"))}
+
+
+def _charpr_by_id(hdr_root):
+    return {cp.get("id"): cp for cp in hdr_root.iter(ph.qn("hh", "charPr"))}
+
+
+def _runs_of_para(sec_root, lead):
+    """텍스트가 lead로 시작하는 첫 문단(표 셀 내부 포함)의 (텍스트, charPrIDRef) run 목록."""
+    for para in sec_root.iter(ph.qn("hp", "p")):
+        if ph.para_text(para).strip().startswith(lead):
+            return [(r.find(ph.qn("hp", "t")).text, r.get("charPrIDRef"))
+                    for r in para.findall(ph.qn("hp", "run"))
+                    if r.find(ph.qn("hp", "t")) is not None]
+    raise AssertionError(f"문단을 찾지 못함: {lead!r}")
+
+
+SUPSCRIPT_SECTION = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 제목1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 바이브코딩＊ 도입 확대</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>＊ 바이브코딩 : AI 보조 개발 방식</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+
+
+def test_superscript_star_splits_run_and_keeps_footnote_plain(tmp_path):
+    """R031 정상 동작 + 예외: 서술 중 ＊만 위첨자 run으로 분리, 선두 ＊ 각주 문단은 평문."""
+    p = tmp_path / "sup.hwpx"
+    build_hwpx(str(p), section_xml=SUPSCRIPT_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    # 각주 문단의 ＊는 세지 않는다 — 서술 중 1개만
+    assert summary["superscript_star"]["stars_superscripted"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    sup = _charpr_supscript(hdr)
+    cps = _charpr_by_id(hdr)
+
+    # (1) 서술 문단: ＊ 앞뒤가 쪼개져 3조각, 가운데 ＊ run만 위첨자 charPr
+    body = _runs_of_para(sec, "ㅇ 바이브코딩")
+    assert [t for t, _ in body] == [" ㅇ 바이브코딩", "＊", " 도입 확대"]  # R025 1칸 들여쓰기 포함
+    assert sup[body[1][1]] is True
+    assert sup[body[0][1]] is False and sup[body[2][1]] is False
+    assert body[0][1] == body[2][1] == "0"  # 앞뒤 조각은 본문 charPr 그대로
+
+    # (2) 위첨자 charPr은 본문 charPr의 복제본 — height·offset·fontRef 유지, id만 신규
+    base_cp, sup_cp = cps["0"], cps[body[1][1]]
+    assert body[1][1] != "0"
+    assert sup_cp.get("height") == base_cp.get("height") == "1500"
+    assert (sup_cp.find(ph.qn("hh", "offset")).attrib
+            == base_cp.find(ph.qn("hh", "offset")).attrib)
+    assert (sup_cp.find(ph.qn("hh", "fontRef")).attrib
+            == base_cp.find(ph.qn("hh", "fontRef")).attrib)
+
+    # (3) 각주 문단(선두 ＊)은 run 분리도 위첨자 charPr 배정도 없음 — 평문 유지
+    foot = _runs_of_para(sec, "＊ 바이브코딩")
+    assert len(foot) == 1
+    assert foot[0][0] == "     ＊ 바이브코딩 : AI 보조 개발 방식"  # R025 5칸만 붙음
+    assert sup[foot[0][1]] is False
+
+
+def test_superscript_star_inside_table_cell(tmp_path):
+    """apply_superscript_star docstring: '표 셀 내부 문단도 동일 처리'."""
+    section = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 제목1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:tbl id="1" rowCnt="1" colCnt="1"><hp:tr><hp:tc><hp:subList><hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>구축＊ 완료</hp:t></hp:run></hp:p></hp:subList></hp:tc></hp:tr></hp:tbl></hp:run></hp:p>
+</hs:sec>
+"""
+    p = tmp_path / "sup_cell.hwpx"
+    build_hwpx(str(p), section_xml=section)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["superscript_star"]["stars_superscripted"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    sup = _charpr_supscript(hdr)
+    cps = _charpr_by_id(hdr)
+    cell = _runs_of_para(sec, "구축")
+    assert [t for t, _ in cell] == ["구축", "＊", " 완료"]
+    assert sup[cell[1][1]] is True
+    assert sup[cell[0][1]] is False and sup[cell[2][1]] is False
+    # 뒤이어 도는 R023(셀 12pt)이 위첨자 속성을 지우지 않는다 — 복제본에 supscript 보존
+    assert [cps[cid].get("height") for _, cid in cell] == ["1200", "1200", "1200"]
+
+
+def test_superscript_star_idempotent(tmp_path):
+    """2회 실행해도 ＊ run이 다시 쪼개지지 않고 텍스트도 보존된다."""
+    p = tmp_path / "sup_idem.hwpx"
+    build_hwpx(str(p), section_xml=SUPSCRIPT_SECTION)
+    s1 = ph.process_file(str(p), star=False, spacing=True)
+    assert s1["superscript_star"]["stars_superscripted"] == 1
+    with zipfile.ZipFile(str(p)) as z:
+        hdr1 = ET.fromstring(z.read("Contents/header.xml"))
+        first = _runs_of_para(ET.fromstring(z.read("Contents/section0.xml")), "ㅇ 바이브코딩")
+    assert [t for t, _ in first] == [" ㅇ 바이브코딩", "＊", " 도입 확대"]  # 1회차에 이미 분리됨
+    sup_id = first[1][1]
+    assert _charpr_supscript(hdr1)[sup_id] is True
+    n_charpr_1 = len(list(hdr1.iter(ph.qn("hh", "charPr"))))
+
+    s2 = ph.process_file(str(p), star=False, spacing=True)
+    assert s2["superscript_star"]["stars_superscripted"] == 0
+    with zipfile.ZipFile(str(p)) as z:
+        hdr2 = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    # run 재분리도, 위첨자 charPr 재생성도 없다
+    assert _runs_of_para(sec, "ㅇ 바이브코딩") == first
+    assert len(list(hdr2.iter(ph.qn("hh", "charPr")))) == n_charpr_1
+    assert "".join(t for t, _ in _runs_of_para(sec, "ㅇ 바이브코딩")) == " ㅇ 바이브코딩＊ 도입 확대"
+
+
+# --- R032 본문 계층 양쪽 정렬 -------------------------------------------------
+# rules-seed.md R032: "본문 계층 문단(□·ㅇ·대시)은 양쪽 정렬(JUSTIFY) — 우측 들쭉날쭉
+# 방지. ＊·※ 각주·표 캡션·발신 줄은 기존 정렬 유지."
+
+HEADER_LEFT = HEADER_XML.replace('<hh:align horizontal="JUSTIFY"',
+                                 '<hh:align horizontal="LEFT"')
+
+JUSTIFY_SECTION = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>&lt; '26. 1. 1.(목), 테스트팀 &gt;</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>□ 제목1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>ㅇ 요지1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>- 상세1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>＊ 각주1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>※ 참고1</hp:t></hp:run></hp:p>
+  <hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="0"><hp:t>[ 표 제목 ]</hp:t></hp:run></hp:p>
+</hs:sec>
+"""
+
+
+def _para_align_by_text(hdr_root, sec_root):
+    """최상위 텍스트 문단 → {문단 텍스트(strip): 그 문단 paraPr의 align horizontal}"""
+    aligns = {}
+    for pp in hdr_root.iter(ph.qn("hh", "paraPr")):
+        el = pp.find(ph.qn("hh", "align"))
+        aligns[pp.get("id")] = el.get("horizontal") if el is not None else None
+    out = {}
+    for para in sec_root:
+        if para.tag != ph.qn("hp", "p"):
+            continue
+        text = ph.para_text(para).strip()
+        if not text:            # 스페이서·표 래퍼 문단 제외
+            continue
+        out[text] = aligns.get(para.get("paraPrIDRef"))
+    return out
+
+
+def test_body_justify_only_hierarchy_kinds(tmp_path):
+    """□·ㅇ·대시만 JUSTIFY로 바뀌고 ＊·※·캡션·발신 줄 정렬은 건드리지 않는다."""
+    p = tmp_path / "justify.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_LEFT, section_xml=JUSTIFY_SECTION)
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    bj = summary["body_justify"]
+    assert bj["found"] == 3      # □1 · ㅇ1 · -1 만 대상
+    assert bj["changed"] == 3    # LEFT → JUSTIFY 복제 배정
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    aligns = _para_align_by_text(hdr, sec)
+    assert aligns["□ 제목1"] == "JUSTIFY"
+    assert aligns["ㅇ 요지1"] == "JUSTIFY"
+    assert aligns["- 상세1"] == "JUSTIFY"
+    # 예외: ＊·※ 각주는 기존 정렬(LEFT) 유지
+    assert aligns["＊ 각주1"] == "LEFT"
+    assert aligns["※ 참고1"] == "LEFT"
+    # 예외: 발신 줄도 기존 정렬 유지
+    assert aligns["< '26. 1. 1.(목), 테스트팀 >"] == "LEFT"
+    # 예외: 표 캡션은 R015가 배정한 CENTER를 유지(JUSTIFY로 덮어쓰지 않음)
+    assert aligns["[ 표 제목 ]"] == "CENTER"
+
+
+def test_body_justify_noop_when_already_justify(tmp_path):
+    """이미 JUSTIFY인 paraPr은 복제 없이 그대로 — found는 세고 changed는 0."""
+    p = tmp_path / "justify_noop.hwpx"
+    build_hwpx(str(p), section_xml=JUSTIFY_SECTION)   # 기본 HEADER_XML = JUSTIFY
+    summary = ph.process_file(str(p), star=False, spacing=True)
+    assert summary["body_justify"] == {"found": 3, "changed": 0}
+    with zipfile.ZipFile(str(p)) as z:
+        hdr = ET.fromstring(z.read("Contents/header.xml"))
+        sec = ET.fromstring(z.read("Contents/section0.xml"))
+    aligns = _para_align_by_text(hdr, sec)
+    assert aligns["□ 제목1"] == aligns["ㅇ 요지1"] == aligns["- 상세1"] == "JUSTIFY"
+    assert aligns["＊ 각주1"] == aligns["※ 참고1"] == "JUSTIFY"  # 원래 정렬 그대로 보존
+
+
+def test_body_justify_idempotent(tmp_path):
+    """재실행 시 새 paraPr을 또 만들지 않는다(멱등)."""
+    p = tmp_path / "justify_idem.hwpx"
+    build_hwpx(str(p), header_xml=HEADER_LEFT, section_xml=JUSTIFY_SECTION)
+    ph.process_file(str(p), star=False, spacing=True)
+    with zipfile.ZipFile(str(p)) as z:
+        hdr1 = ET.fromstring(z.read("Contents/header.xml"))
+        sec1 = ET.fromstring(z.read("Contents/section0.xml"))
+    before_ids = [pp.get("id") for pp in hdr1.iter(ph.qn("hh", "paraPr"))]
+    before = _para_align_by_text(hdr1, sec1)
+    s2 = ph.process_file(str(p), star=False, spacing=True)
+    assert s2["body_justify"] == {"found": 3, "changed": 0}
+    with zipfile.ZipFile(str(p)) as z:
+        hdr2 = ET.fromstring(z.read("Contents/header.xml"))
+        sec2 = ET.fromstring(z.read("Contents/section0.xml"))
+    assert [pp.get("id") for pp in hdr2.iter(ph.qn("hh", "paraPr"))] == before_ids
+    assert _para_align_by_text(hdr2, sec2) == before

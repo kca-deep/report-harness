@@ -165,12 +165,39 @@ AskUserQuestion 선택지(**팩트체크 선택지를 이 질문에 합친다** 
    불합격 항목이 나오면 수정 후 게이트②를 간이 재확인한다(사실이 바뀌면 사용자가 다시 봐야
    한다) — 이 경우에만 사용자 개입이 생긴다.
 2. 둘 다 통과하면 `skills/report-pipeline/references/hwpx-recipe.md` recipe 절차(생성→이미지
-   규격판정·주입→검증) 그대로 실행: prep 정규화(`prep_report_md.py`, exit 2면 사유·줄 번호
-   보고 후 20_draft.md 수정부터 재시도) → kordoc `generate_document` 변환(도식 마커 치환 포함)
-   → 이미지 마커는 생성 후 별도 단계(recipe §3)로 `check_image_size.py` 규격판정 →
-   통과분만 `patch_document`로 주입 → `validate_hwpx.py structural` → 왕복 되읽기 →
-   `validate_hwpx.py compare` — 불일치는 최대 2회 재변환 루프, 그래도 잔존하면 목록을
-   사용자에게 명시 보고하고 `20_draft.md`(SSOT)를 그대로 인도한다.
+   규격판정·주입→**후처리**→검증) 그대로 실행: prep 정규화(`prep_report_md.py`, exit 2면 사유·줄
+   번호 보고 후 20_draft.md 수정부터 재시도) → kordoc `generate_document` 변환(도식 마커 치환
+   포함) → 이미지 마커는 생성 후 별도 단계(recipe §3)로 `check_image_size.py` 규격판정 →
+   통과분만 `patch_document`로 주입 → **양식 정합 후처리(`postprocess_hwpx.py`, 아래 2-1)** →
+   `validate_hwpx.py structural` → 왕복 되읽기 → `validate_hwpx.py compare` — 불일치는 최대
+   2회 재변환 루프, 그래도 잔존하면 목록을 사용자에게 명시 보고하고 `20_draft.md`(SSOT)를
+   그대로 인도한다.
+
+   ### 2-1. 양식 정합 후처리 — 생략 금지 (recipe §3.5)
+
+   kordoc `generate_document` 산출물은 **양식 정합이 아니다**. 폰트·간격·정렬·배너·표 폭 등
+   `rules.md` `[export]` 규칙의 대부분(R011·R013~R015·R017~R020·R022~R025·R027·R030~R042)은
+   이 스크립트가 hwpx XML을 직접 고쳐야 적용된다. **이 호출을 건너뛰면 규칙 위반본이 인도된다.**
+
+   ```
+   python3 skills/report-pipeline/scripts/postprocess_hwpx.py \
+       {work_dir}/final/{제목}.hwpx --all --sender-size 12
+   ```
+
+   - **실행 위치**: 이미지 주입 **후**, `validate_hwpx.py structural` **전**. 스크립트가 zip을
+     직접 재작성하므로 재작성 결과를 구조 검증 대상으로 삼아야 한다.
+   - **`--sender-size 12`는 `--all`에 포함되지 않는다** — 값이 필요해 별도 지정이며, 빠뜨리면
+     발신 줄 12pt(R018)가 적용되지 않는다. 위 호출 형태를 그대로 쓴다.
+   - `--all` = `--star-footnote`(R011) + `--spacing`(간격·정렬·폰트·캡션·배너 묶음) +
+     `--header-banner`(R030·R041). 표 폭 본문 정합(R036·R042 `apply_fit_page_width`)은
+     **플래그와 무관하게 매 실행 적용**된다.
+   - exit 0: 적용 완료(치환 건수·스페이서 이벤트 요약 JSON을 stdout). **exit 1: 적용한 모든
+     처리에서 대상 0건 — 잘못된 파일을 가리켰을 가능성이므로 원인을 확인하고 넘어가지 않는다.**
+     exit 2: 인자·파일·zip/xml 구조 오류(참고 charPr 미발견 포함).
+   - 각 플래그가 적용하는 규칙과 실측 근거는 `hwpx-recipe.md` §3.5에 서술돼 있다 — 후처리
+     결과가 규칙과 어긋나 보이면 그 절을 읽고 판정한다(여기서는 중복 서술하지 않는다).
+   - `--star-indent LEFT,INTENT`는 R019에서 **폐기된 레거시 훅**이다(계층 내어쓰기는
+     `--spacing` 묶음의 `apply_space_hierarchy`가 담당). 새로 쓰지 않는다.
 3. **인도**: `final/{제목}.hwpx`를 파일 첨부로 전송(SendUserFile류)한다. 미검증 사실(팩트체크
    생략/경량 선택 시)·잔존 QA 이슈가 있으면 **1줄로만** 고지한다 — 장황한 나열 금지.
 4. **시간 상한 5분**.
@@ -217,7 +244,7 @@ AskUserQuestion 선택지(**팩트체크 선택지를 이 질문에 합친다** 
 
 - `references/style-guide.md` — 기관보고서 양식 성문화(제목·계층·서술량·톤앤매너·맺음말).
   집필·스타일 감사 시점에 읽는다.
-- `references/md-profile.md` — 변환 가능 마크다운 서브셋 + 린트 룰 7종. 집필·lint 시점에
+- `references/md-profile.md` — 변환 가능 마크다운 서브셋 + 린트 룰 8종. 집필·lint 시점에
   읽는다.
 - `references/hwpx-recipe.md` — 변환 절차·부록 스크립트 시그니처 표. export 단계 진입 시
   읽는다.
@@ -233,6 +260,13 @@ AskUserQuestion 선택지(**팩트체크 선택지를 이 질문에 합친다** 
 - `scripts/lint_md_profile.py <md>` — 결정론 린트. JSON 출력, exit 0(통과)/1(위반).
 - `scripts/prep_report_md.py <src> -o <out>` — 변환 전 정규화. exit 0(성공)/2(모호한 입력
   거부).
+- `scripts/postprocess_hwpx.py <file.hwpx> --all --sender-size 12` — **양식 정합 후처리(export
+  필수 단계, §④-2-1)**. kordoc 산출 hwpx의 계층 간격·정렬·폰트·캡션·배너·표 폭을 양식 실측값으로
+  치환해 `[export]` 규칙 대부분을 실제로 적용하는 스크립트다. 플래그: `--star-footnote`(R011)·
+  `--spacing`(R013~R015·R017·R019·R020·R022~R025·R027·R031~R035·R037~R040)·
+  `--header-banner`(R030·R041)·`--all`(앞 셋)·`--sender-size PT`(R018, `--all` 미포함)·
+  `--star-indent L,I`(R019에서 폐기된 레거시). 표 폭 정합(R036·R042)은 플래그 무관 상시 적용.
+  exit 0(적용)/1(대상 0건 — 원인 확인)/2(인자·파일·구조 오류).
 - `scripts/validate_hwpx.py structural|compare|numbers` — 구조 검증/왕복 대조/경량 팩트체크.
   시그니처는 `hwpx-recipe.md` 부록 표 참조(중복 서술 안 함).
 - `scripts/check_image_size.py <img>` — 이미지 규격 판정. exit 0(이내)/1(초과)/2(오류).
