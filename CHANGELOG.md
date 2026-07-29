@@ -8,6 +8,10 @@
 - R042: 표 총 폭은 본문 폭 '미만' — 여유 283 hu(1.0mm) 확보. R036('이내')의 계열 정정으로, slack 0 축소가 같은 문단의 선행 요소 때문에 표를 다음 줄로 밀어 표 위에 15pt 빈 줄을 만들던 결함(사용자 6회 보고분의 정체)을 해소. `apply_fit_page_width`가 본문 폭 − 283으로 비례 축소하고, 그림 축소 시 scaMatrix e1/e5·rotationInfo centerX/Y 파생 캐시를 재계산(위생 동반 수정)
 - 동기화 부채 해소: installed↔repo (`inject_images.py`·`assets/kca-header-banner/` repo 누락분 복사)
 - 테스트 118 → 142
+- README 재구성(설명 친절화): ①개요(목적·활용 시나리오·구조도 3종)→②주요기능→③의존성(번들/별도설치
+  구분·URL 명시)→④설치 순으로 재편. 사전 요구사항·설치 확인·문제 해결 표를 신설해 처음 쓰는
+  사람이 막히는 지점을 메웠다. 구조도는 한글 폭 때문에 ASCII 박스가 깨지므로 Mermaid로 교체
+  (mermaid-cli 실렌더 검증), 폴더 트리는 경로부를 ASCII 플레이스홀더로 통일해 주석 컬럼 정렬 고정
 
 ## 0.3.1 (2026-07-29)
 - **MIT 라이선스 명문화**: 루트 `LICENSE` 신설 + `plugin.json` `license: "MIT"` + README 절 추가.
