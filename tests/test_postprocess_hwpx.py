@@ -345,6 +345,38 @@ def test_canonicalize_kordoc_package(tmp_path):
         summary_names = names  # 텍스트 불변은 test_all_preserves_text_content가 보장
 
 
+def test_canonicalize_removes_script_stubs(tmp_path):
+    """한글 재저장본의 기본 JScript 스텁(확장자 없는 활성콘텐츠) 제거 + hpf 등재 철회."""
+    f = tmp_path / "resaved.hwpx"
+    build_kordoc_like(f)
+    # 한글 재저장이 삽입하는 형태 재현: Scripts 멤버 + hpf item/itemref 등재
+    with zipfile.ZipFile(f, "a") as z:
+        z.writestr("Scripts/headerScripts", "var Documents = XHwpDocuments;".encode("utf-16-le"))
+        z.writestr("Scripts/sourceScripts", "function OnDocument_New(){}".encode("utf-16-le"))
+    with zipfile.ZipFile(f) as z:
+        data = {n: z.read(n) for n in z.namelist()}
+    data["Contents/content.hpf"] = data["Contents/content.hpf"].replace(
+        b"</opf:manifest>",
+        b'<opf:item id="headersc" href="Scripts/headerScripts" media-type="application/x-javascript ;charset=utf-16"/>'
+        b'<opf:item id="sourcesc" href="Scripts/sourceScripts" media-type="application/x-javascript ;charset=utf-16"/>'
+        b"</opf:manifest>").replace(
+        b"</opf:spine>",
+        b'<opf:itemref idref="headersc" linear="no"/></opf:spine>')
+    with zipfile.ZipFile(f, "w") as z:
+        zi = zipfile.ZipInfo("mimetype"); zi.compress_type = zipfile.ZIP_STORED
+        z.writestr(zi, data.pop("mimetype"))
+        for n, d in data.items():
+            z.writestr(n, d)
+
+    ph.process_file(str(f), spacing=True)
+
+    with zipfile.ZipFile(f) as z:
+        assert not any(n.startswith("Scripts/") for n in z.namelist())
+        hpf = z.read("Contents/content.hpf")
+        assert b"Scripts/" not in hpf and b"headersc" not in hpf
+        ET.fromstring(hpf)  # 등재 철회 후에도 XML 정상
+
+
 def test_canonicalize_idempotent(tmp_path):
     f = tmp_path / "k.hwpx"
     build_kordoc_like(f)

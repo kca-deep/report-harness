@@ -476,7 +476,7 @@ Claude Code를 실행한 뒤 프롬프트에 순서대로 입력한다.
 | 법령 조사가 안 된다 | `LAW_OC` 미등록 | [3-3](#3-3-korean-law-api-키-발급--무료-1분) 참조 후 재시작 |
 | 산출물이 어디 있는지 모르겠다 | 기본값이 실행위치 기준 | `{현재 작업 디렉토리}/reports/` 확인. 고정하려면 [5. 설정](#5-설정-선택) |
 | hwpx 서식이 양식과 다르다 | 후처리 누락 가능성 | `40_qa.md` 확인. `postprocess_hwpx.py`가 exit 1(대상 0건)이면 원인 규명 필요 |
-| 내부망 자료교환에서 반입 거부 (octet-stream·미등록 확장자) | 구버전 산출물 — 후처리 전 hwpx는 version.xml 등 필수 멤버가 없어 판별 실패 | 후처리를 거친 파일인지 확인(`validate_hwpx.py structural`이 `errors: []`이면 정상). 기존 산출물은 `postprocess_hwpx.py <파일> --spacing`만 다시 돌려도 패키지 정합(R043)이 적용된다 |
+| 내부망 자료교환에서 반입 거부 (octet-stream·미등록 확장자) | ① 후처리 전 hwpx는 version.xml 등 필수 멤버가 없어 판별 실패 ② 한글 재저장본은 확장자 없는 JScript 스텁(`Scripts/headerScripts`)이 삽입돼 내부 검사에 반려 | `postprocess_hwpx.py <파일> --spacing`을 다시 돌리면 패키지 정합(R043)이 두 경우 모두 소급 적용된다(멱등). `validate_hwpx.py structural`이 `errors: []`이면 정상 |
 | `"이어서 해줘"` 했더니 새 폴더가 생겼다 | 슬러그 부분일치 실패 | 건명을 함께 말한다 — `"AI성과측정 건 이어서 해줘"` |
 
 ### 4-7. 제거

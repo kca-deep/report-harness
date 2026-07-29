@@ -11,7 +11,12 @@
   프로파일 정품 일치, 멱등. `validate_hwpx.py structural`에 OCF 시그니처(mimetype 첫 엔트리·
   STORED·offset 0·extra 0·38바이트째 평문)·필수 멤버·디렉터리 엔트리 검사 추가(반입 거부 유형
   5종 회귀 테스트). exit 1 의미 정정: 스타일 대상 0건(패키지 정합만 적용됐을 수 있음).
-  테스트 152 → 160
+- **R043 보강: 한글 재저장본 Scripts 스텁 제거** — 실반려 파일 실측으로 제2 반려 경로 확정.
+  한글 재저장 시 삽입되는 기본 빈 JScript(`Scripts/headerScripts`·`sourceScripts`)는 확장자
+  없는 멤버 + hpf `application/x-javascript` 등재 활성콘텐츠라서 압축 내부까지 검사하는 반입
+  엔진이 '등록되지 않은 확장자'로 반려한다(실반려 오류 문구 'header script' = 이 멤버명).
+  canonicalize가 Scripts/ 전량 제거 + hpf item/itemref 등재 철회 동반 수행(스텁은 기능 0).
+  테스트 152 → 161
 
 ## Unreleased (2026-07-28)
 - R038: ※·＊ 단서/각주 뒤 ㅇ 복귀 전환 6pt 스페이서 추가 (postprocess TRANSITIONS cham→yo·star→yo)

@@ -236,6 +236,11 @@ R018(발신 줄 12pt)이 영구 미적용된 채로 §4 검증을 통과해 버�
   미디어 STORED, XML DEFLATED)을 정품 저장기와 일치시킨다. 멱등(2회 실행 바이트 동일).
   `validate_hwpx.py structural`이 OCF 시그니처(첫 엔트리 mimetype STORED·offset 0·extra 0·
   38바이트째 평문 `application/hwp+zip`)와 필수 멤버를 검증해 회귀를 차단한다.
+  **'26.7.29 보강**: 한글 재저장본에 삽입되는 기본 빈 JScript 스텁(`Scripts/headerScripts`·
+  `sourceScripts` — 확장자 없는 멤버 + hpf에 `application/x-javascript`로 등재되는
+  활성콘텐츠)도 반려 사유다(실반려 오류 문구 'header script'가 이 멤버명). canonicalize가
+  Scripts/ 전량 제거 + hpf item/itemref 등재 철회를 함께 수행한다. 기존 산출물·재저장본은
+  `postprocess_hwpx.py <파일> --spacing`만 다시 돌려도 소급 정합된다(멱등).
 - **표 캡션·셀 12pt (R023)**: 캡션(내장 hp:caption 포함)과 본문 콘텐츠 표(제목 박스 제외) 셀
   문단의 charPr을 폰트 유지·높이 1200(12pt)으로 치환한다.
 - **□ 절 제목 볼드 (R024)**: dae 문단 run charPr에 `<hh:bold/>` 변형을 배정한다.

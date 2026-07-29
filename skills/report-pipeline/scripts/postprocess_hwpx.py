@@ -2001,11 +2001,29 @@ def _build_container_xml(names):
 
 def canonicalize_package(data):
     """data(멤버명→bytes)를 제자리 정합하고 (정본 순서 멤버명 목록, 요약)을 반환한다."""
-    summary = {"added": [], "dirs_removed": 0,
+    summary = {"added": [], "dirs_removed": 0, "scripts_removed": [],
                "container_rewritten": False, "settings_registered": False}
     for name in [n for n in data if n.endswith("/")]:
         del data[name]
         summary["dirs_removed"] += 1
+    # Scripts 스텁 제거 — 한글 재저장 시 삽입되는 기본 빈 JScript(headerScripts·
+    # sourceScripts)는 확장자 없는 멤버 + 활성콘텐츠라서 압축 내부까지 검사하는
+    # 반입 시스템이 '등록되지 않은 확장자'로 반려한다('26.7.29 실측 — 실반려 문구
+    # "header script에 등록되지 않은 확장자"가 이 멤버명이다). 기관보고서 인도본에
+    # 매크로가 있을 이유가 없고 스텁은 기능 0이므로 전량 제거하고 hpf 등재도 걷는다.
+    scripts = sorted(n for n in data if n.startswith("Scripts/"))
+    if scripts:
+        for n in scripts:
+            del data[n]
+        summary["scripts_removed"] = scripts
+        hpf = data.get("Contents/content.hpf")
+        if hpf is not None:
+            removed_ids = [m.group(1) for m in
+                           re.finditer(rb'<opf:item\s+id="([^"]+)"[^>]*href="Scripts/[^"]*"[^>]*/>', hpf)]
+            hpf = re.sub(rb'<opf:item\b[^>]*href="Scripts/[^"]*"[^>]*/>', b"", hpf)
+            for rid in removed_ids:
+                hpf = re.sub(rb'<opf:itemref\s+idref="' + re.escape(rid) + rb'"[^>]*/>', b"", hpf)
+            data["Contents/content.hpf"] = hpf
     section_names = sorted(n for n in data if SECTION_RE.match(n))
     for name, content in (("version.xml", VERSION_XML),
                           ("settings.xml", SETTINGS_XML),
