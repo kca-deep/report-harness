@@ -9,6 +9,16 @@
 - 동기화 부채 해소: installed↔repo (`inject_images.py`·`assets/kca-header-banner/` repo 누락분 복사)
 - 테스트 118 → 142
 
+## 0.2.0 (2026-07-29)
+- **배포 가능 상태 도달**: `.claude-plugin/marketplace.json` 신설 — 저장소가 플러그인이자
+  마켓플레이스를 겸한다(루트 `source: "./"`, superpowers·vercel·firecrawl과 동일 패턴).
+  `/plugin marketplace add kca-deep/report-harness` → `/plugin install report-harness@report-harness`
+- plugin.json: 0.1.0 → 0.2.0, homepage·repository·keywords 추가(29커밋째 버전 고정 해소)
+- 회귀 가드: `test_marketplace_manifest_valid`·`test_marketplace_version_matches_plugin` —
+  두 매니페스트 버전이 어긋나면 설치본과 카탈로그가 불일치하므로 테스트로 고정
+- R036 원문 정정: `apply_fit_page_width`의 '--all 포함' → '플래그와 무관하게 항상 실행'
+  (코드 실측). 배포 시드와 운영 `state_dir/rules.md` 양쪽 동시 반영해 42종 동기화 유지
+
 ## Unreleased (2026-07-29)
 - 제거: `inject_images.py` — SKILL.md·commands·references·tests 어디서도 호출되지 않는 고아
   스크립트(참조 0곳, 131줄 전량 미실행). repo·installed 양쪽 삭제. 이미지 주입이 필요해지면

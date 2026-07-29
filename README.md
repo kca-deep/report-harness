@@ -10,8 +10,17 @@
 
 ### 플러그인으로 설치 (배포판)
 
-이 저장소는 Claude Code 플러그인 구조(`.claude-plugin/plugin.json` + `skills/` + `commands/`)를
-따른다. 플러그인 설치 경로에 이 저장소를 등록하면 `skills/`·`commands/`가 자동으로 인식된다.
+이 저장소는 **플러그인이면서 동시에 마켓플레이스**다(`.claude-plugin/plugin.json` +
+`.claude-plugin/marketplace.json`, 루트를 `source: "./"`로 등록). Claude Code에서 두 줄이면
+끝난다.
+
+```
+/plugin marketplace add kca-deep/report-harness
+/plugin install report-harness@report-harness
+```
+
+설치되면 `skills/`(report-pipeline·report-research·humanizer)와 `commands/`(4종)가 자동 인식된다.
+갱신은 `/plugin marketplace update report-harness`.
 
 ### 개발용 로컬 배포
 
