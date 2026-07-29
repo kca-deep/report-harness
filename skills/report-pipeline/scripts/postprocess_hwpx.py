@@ -1902,6 +1902,133 @@ def serialize_xml(root):
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + body).encode("utf-8")
 
 
+# ---------------------------------------------------------------------------
+# 패키지 정합 (R043) — 내부망 자료교환 반입 판별
+#
+# kordoc generate_document 산출물은 hwpx 최소 패키지(mimetype·container.xml·
+# content.hpf·header·section·PrvText + 디렉터리 엔트리 3개, 전량 STORED)라서
+# 심층 구조 검사를 하는 반입 시스템이 hwpx로 판별하지 못한다 — mimetype+
+# container.xml 만으로는 일반 OCF(EPUB류)와 지문이 같고, hwpx를 확정하는
+# 마커인 version.xml이 없기 때문(→ octet-stream 판정 → 미등록 확장자 반려).
+# 한컴 정품 실측('26.7.29, 도식 Pool.hwpx)의 멤버 구성·엔트리 순서·압축
+# 프로파일로 정합한다. 템플릿 3종은 그 실측본에서 그대로 가져온 정본이다.
+# ---------------------------------------------------------------------------
+
+VERSION_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+    '<hv:HCFVersion xmlns:hv="http://www.hancom.co.kr/hwpml/2011/version" '
+    'tagetApplication="WORDPROCESSOR" major="5" minor="1" micro="1" buildNumber="0" '
+    'os="1" xmlVersion="1.5" application="Hancom Office Hangul" '
+    'appVersion="12, 0, 0, 3747 WIN32LEWindows_10"/>'
+)
+
+SETTINGS_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+    '<ha:HWPApplicationSetting xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app" '
+    'xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0">'
+    '<ha:CaretPosition listIDRef="0" paraIDRef="0" pos="0"/>'
+    '<config:config-item-set name="PrintInfo">'
+    '<config:config-item name="PrintAutoFootNote" type="boolean">false</config:config-item>'
+    '<config:config-item name="PrintAutoHeadNote" type="boolean">false</config:config-item>'
+    '<config:config-item name="PrintMethod" type="short">0</config:config-item>'
+    '<config:config-item name="OverlapSize" type="short">0</config:config-item>'
+    '<config:config-item name="PrintCropMark" type="short">0</config:config-item>'
+    '<config:config-item name="BinderHoleType" type="short">0</config:config-item>'
+    '<config:config-item name="ZoomX" type="short">100</config:config-item>'
+    '<config:config-item name="ZoomY" type="short">100</config:config-item>'
+    '</config:config-item-set></ha:HWPApplicationSetting>'
+)
+
+MANIFEST_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+    '<odf:manifest xmlns:odf="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"/>'
+)
+
+_PKG_NUM = re.compile(r"(\d+)")
+_PKG_MEDIA_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".wmf", ".emf")
+
+
+def _pkg_order_key(name):
+    """한컴 저장기 실측 엔트리 순서."""
+    fixed = {"mimetype": 0, "version.xml": 1, "Contents/header.xml": 3,
+             "Preview/PrvText.txt": 5, "settings.xml": 6, "Preview/PrvImage.png": 7,
+             "META-INF/container.rdf": 8, "Contents/content.hpf": 9,
+             "META-INF/container.xml": 10, "META-INF/manifest.xml": 11}
+    if name in fixed:
+        return (fixed[name], ())
+    if name.startswith("BinData/"):
+        nat = tuple((0, int(t)) if t.isdigit() else (1, t) for t in _PKG_NUM.split(name))
+        return (2, nat)
+    m = SECTION_RE.match(name)
+    if m:
+        return (4, ((0, int(_PKG_NUM.search(name).group(1))),))
+    return (12, ((1, name),))
+
+
+def _pkg_compress(name):
+    """정품 압축 프로파일: mimetype·version.xml·미디어는 STORED, 나머지 DEFLATED."""
+    if name in ("mimetype", "version.xml"):
+        return zipfile.ZIP_STORED
+    if name.startswith("BinData/") or name.lower().endswith(_PKG_MEDIA_EXT):
+        return zipfile.ZIP_STORED
+    return zipfile.ZIP_DEFLATED
+
+
+def _build_container_rdf(section_names):
+    ns0 = 'xmlns:ns0="http://www.hancom.co.kr/hwpml/2016/meta/pkg#"'
+    pkg = "http://www.hancom.co.kr/hwpml/2016/meta/pkg#"
+    parts = ['<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+             '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
+             f'<rdf:Description rdf:about=""><ns0:hasPart {ns0} rdf:resource="Contents/header.xml"/></rdf:Description>',
+             f'<rdf:Description rdf:about="Contents/header.xml"><rdf:type rdf:resource="{pkg}HeaderFile"/></rdf:Description>']
+    for s in section_names:
+        parts.append(f'<rdf:Description rdf:about=""><ns0:hasPart {ns0} rdf:resource="{s}"/></rdf:Description>')
+        parts.append(f'<rdf:Description rdf:about="{s}"><rdf:type rdf:resource="{pkg}SectionFile"/></rdf:Description>')
+    parts.append(f'<rdf:Description rdf:about=""><rdf:type rdf:resource="{pkg}Document"/></rdf:Description></rdf:RDF>')
+    return "".join(parts)
+
+
+def _build_container_xml(names):
+    roots = ['<ocf:rootfile full-path="Contents/content.hpf" media-type="application/hwpml-package+xml"/>']
+    if "Preview/PrvText.txt" in names:
+        roots.append('<ocf:rootfile full-path="Preview/PrvText.txt" media-type="text/plain"/>')
+    roots.append('<ocf:rootfile full-path="META-INF/container.rdf" media-type="application/rdf+xml"/>')
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+            '<ocf:container xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container" '
+            'xmlns:hpf="http://www.hancom.co.kr/schema/2011/hpf">'
+            '<ocf:rootfiles>' + "".join(roots) + '</ocf:rootfiles></ocf:container>')
+
+
+def canonicalize_package(data):
+    """data(멤버명→bytes)를 제자리 정합하고 (정본 순서 멤버명 목록, 요약)을 반환한다."""
+    summary = {"added": [], "dirs_removed": 0,
+               "container_rewritten": False, "settings_registered": False}
+    for name in [n for n in data if n.endswith("/")]:
+        del data[name]
+        summary["dirs_removed"] += 1
+    section_names = sorted(n for n in data if SECTION_RE.match(n))
+    for name, content in (("version.xml", VERSION_XML),
+                          ("settings.xml", SETTINGS_XML),
+                          ("META-INF/manifest.xml", MANIFEST_XML)):
+        if name not in data:
+            data[name] = content.encode("utf-8")
+            summary["added"].append(name)
+    if "META-INF/container.rdf" not in data:
+        data["META-INF/container.rdf"] = _build_container_rdf(section_names).encode("utf-8")
+        summary["added"].append("META-INF/container.rdf")
+    cx = data.get("META-INF/container.xml")
+    if cx is not None and b"container.rdf" not in cx:
+        data["META-INF/container.xml"] = _build_container_xml(data).encode("utf-8")
+        summary["container_rewritten"] = True
+    hpf = data.get("Contents/content.hpf")
+    if hpf is not None and b'href="settings.xml"' not in hpf and b"</opf:manifest>" in hpf:
+        data["Contents/content.hpf"] = hpf.replace(
+            b"</opf:manifest>",
+            b'<opf:item id="settings" href="settings.xml" media-type="application/xml"/></opf:manifest>')
+        summary["settings_registered"] = True
+    return sorted(data, key=_pkg_order_key), summary
+
+
 def process_file(path, star=False, spacing=False, sender_size=None, star_indent=None,
                  header_banner=False):
     if not (star or spacing or sender_size is not None or star_indent is not None
@@ -2070,21 +2197,26 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
     for name, root in section_roots.items():
         data[name] = serialize_xml(root)
 
+    # 패키지 정합 (R043) — 플래그와 무관하게 매 실행 적용 (표 폭 정합과 동일 지위).
+    # any_target_found에는 세지 않는다: exit 1(스타일 대상 0건 = 잘못된 파일 의심)
+    # 가드를 유지하기 위해 — 정합 결과는 summary.package_canonical로 보고된다.
+    canon_names, canon = canonicalize_package(data)
+    summary["package_canonical"] = canon
+    if canon["added"] or canon["dirs_removed"] or canon["container_rewritten"]:
+        any_change = True
+
+    by_name = {info.filename: info for info in infos}
+    base_dt = infos[0].date_time if infos else (1980, 1, 1, 0, 0, 0)
     tmp_fd, tmp_path = tempfile.mkstemp(dir=str(pathlib.Path(path).resolve().parent), suffix=".hwpx.tmp")
     os.close(tmp_fd)
     try:
         with zipfile.ZipFile(tmp_path, "w") as zout:
-            for info in infos:
-                zi = zipfile.ZipInfo(info.filename, date_time=info.date_time)
-                zi.compress_type = info.compress_type
-                zi.external_attr = info.external_attr
-                zout.writestr(zi, data[info.filename])
-            existing = {info.filename for info in infos}
-            for name in data:
-                if name in existing:
-                    continue
-                zi = zipfile.ZipInfo(name, date_time=infos[0].date_time)
-                zi.compress_type = zipfile.ZIP_DEFLATED
+            for name in canon_names:
+                src = by_name.get(name)
+                zi = zipfile.ZipInfo(name, date_time=src.date_time if src else base_dt)
+                zi.compress_type = _pkg_compress(name)
+                if src is not None:
+                    zi.external_attr = src.external_attr
                 zout.writestr(zi, data[name])
         os.replace(tmp_path, path)
     except Exception:
@@ -2099,7 +2231,7 @@ def process_file(path, star=False, spacing=False, sender_size=None, star_indent=
 
 USAGE = ("usage: postprocess_hwpx.py <file.hwpx> [--star-footnote] [--spacing] [--header-banner] [--all]\n"
          "                          [--sender-size PT] [--star-indent LEFT,INTENT]\n"
-         "exit 0: 변경 적용 완료 | exit 1: 대상 없음(무변경) | exit 2: 인자/파일/구조 오류")
+         "exit 0: 변경 적용 완료 | exit 1: 스타일 대상 없음(패키지 정합만 적용됐을 수 있음) | exit 2: 인자/파일/구조 오류")
 
 
 def main(argv):

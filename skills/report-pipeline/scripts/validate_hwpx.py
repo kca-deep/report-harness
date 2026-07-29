@@ -10,9 +10,15 @@ STRIKE = re.compile(r"~~[^~\n]+~~")
 ITALIC = re.compile(r"(?<!\*)\*(?!\*)[^*\n]+(?<!\*)\*(?!\*)")
 INLINE_DASH = re.compile(r"\s-\s")
 
+MIMETYPE_HWPX = b"application/hwp+zip"
+# 반입 판별 필수 멤버 — version.xml이 hwpx 확정 마커(부재 시 일반 OCF/EPUB류와 지문 동일)
+PACKAGE_REQUIRED = ("version.xml", "META-INF/container.xml",
+                    "Contents/content.hpf", "Contents/header.xml")
+
 def structural_check(path):
     errs = []
     try:
+        raw = pathlib.Path(path).read_bytes()
         with zipfile.ZipFile(path) as z:
             bad = z.testzip()
             if bad:
@@ -23,6 +29,31 @@ def structural_check(path):
                         ET.fromstring(z.read(n))
                     except ET.ParseError as e:
                         errs.append(f"{n}: {e}")
+            # --- 반입 판별(OCF 시그니처 + 패키지 완결성, R043) ---
+            infos = z.infolist()
+            names = [i.filename for i in infos]
+            first = infos[0] if infos else None
+            if first is None or first.filename != "mimetype":
+                errs.append("ocf: first entry must be 'mimetype'")
+            else:
+                if first.compress_type != zipfile.ZIP_STORED:
+                    errs.append("ocf: mimetype must be STORED (uncompressed)")
+                if first.header_offset != 0:
+                    errs.append("ocf: mimetype local header must be at offset 0")
+                if first.extra:
+                    errs.append("ocf: mimetype must not carry an extra field")
+                if z.read("mimetype") != MIMETYPE_HWPX:
+                    errs.append(f"ocf: mimetype content must be {MIMETYPE_HWPX.decode()}")
+                elif not errs and raw[38:38 + len(MIMETYPE_HWPX)] != MIMETYPE_HWPX:
+                    errs.append("ocf: signature string not at byte offset 38")
+            for req in PACKAGE_REQUIRED:
+                if req not in names:
+                    errs.append(f"package: missing required member {req}")
+            if not any(re.match(r"Contents/section\d+\.xml$", n) for n in names):
+                errs.append("package: no Contents/sectionN.xml")
+            dirs = [n for n in names if n.endswith("/")]
+            if dirs:
+                errs.append(f"package: directory entries present: {dirs}")
     except (zipfile.BadZipFile, FileNotFoundError) as e:
         errs.append(str(e))
     return errs

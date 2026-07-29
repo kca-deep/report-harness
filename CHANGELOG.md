@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased (2026-07-29)
+- **R043: hwpx 패키지 정합 — 내부망 자료교환 반입 거부 해소**. kordoc 산출물은 hwpx 최소
+  패키지(version.xml 부재·디렉터리 엔트리 3개·전량 STORED)라서 mimetype+container.xml만으로는
+  EPUB류 일반 OCF와 지문이 같아, 심층 구조 검사를 하는 반입 시스템이 hwpx로 판별하지 못하고
+  octet-stream → 미등록 확장자로 반려했다(타 hwpx는 동일 시스템 정상 유통 — 산출물 문제로 확정,
+  한컴 정품 '도식 Pool.hwpx' 엔트리 전수 대조 실측). postprocess `canonicalize_package`가 플래그
+  무관 상시 적용: version.xml·settings.xml(hpf manifest 등재)·META-INF/manifest.xml·container.rdf
+  보강(정품 실측 템플릿), 디렉터리 엔트리 제거, container.xml rootfiles 정본화, 엔트리 순서·압축
+  프로파일 정품 일치, 멱등. `validate_hwpx.py structural`에 OCF 시그니처(mimetype 첫 엔트리·
+  STORED·offset 0·extra 0·38바이트째 평문)·필수 멤버·디렉터리 엔트리 검사 추가(반입 거부 유형
+  5종 회귀 테스트). exit 1 의미 정정: 스타일 대상 0건(패키지 정합만 적용됐을 수 있음).
+  테스트 152 → 160
+
 ## Unreleased (2026-07-28)
 - R038: ※·＊ 단서/각주 뒤 ㅇ 복귀 전환 6pt 스페이서 추가 (postprocess TRANSITIONS cham→yo·star→yo)
 - R039: 본문 괄호 13pt(R033)를 문단 전체 텍스트 기준 run 분할로 개정 — 문장 안 볼드로 run이 쪼개진 괄호도 처리(볼드 보존), cross_run_skipped 32→0

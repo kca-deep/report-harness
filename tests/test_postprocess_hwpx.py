@@ -1,4 +1,4 @@
-import sys, pathlib, zipfile, io, re
+import sys, pathlib, zipfile, io, re, json
 import xml.etree.ElementTree as ET
 import pytest
 
@@ -102,6 +102,31 @@ def build_hwpx(path, header_xml=HEADER_XML, section_xml=SECTION_XML):
         z.writestr("Contents/content.hpf", "<opf:package xmlns:opf='x'/>")
         z.writestr("Contents/header.xml", header_xml)
         z.writestr("Contents/section0.xml", section_xml)
+    return path
+
+
+def build_kordoc_like(path, header_xml=HEADER_XML, section_xml=SECTION_XML):
+    """kordoc generate_document 실산출 레이아웃 재현('26.7.29 실측) —
+    디렉터리 엔트리 3개·version.xml 등 필수 멤버 부재·전량 STORED."""
+    container = ('<ocf:container xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container">'
+                 '<ocf:rootfiles><ocf:rootfile full-path="Contents/content.hpf" '
+                 'media-type="application/hwpml-package+xml"/></ocf:rootfiles></ocf:container>')
+    hpf = ('<opf:package xmlns:opf="http://www.idpf.org/2007/opf/"><opf:manifest>'
+           '<opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>'
+           '<opf:item id="section0" href="Contents/section0.xml" media-type="application/xml"/>'
+           '</opf:manifest><opf:spine><opf:itemref idref="header" linear="no"/>'
+           '<opf:itemref idref="section0" linear="yes"/></opf:spine></opf:package>')
+    with zipfile.ZipFile(path, "w") as z:
+        zi = zipfile.ZipInfo("mimetype")
+        zi.compress_type = zipfile.ZIP_STORED
+        z.writestr(zi, MIMETYPE)
+        for d in ("META-INF/", "Contents/", "Preview/"):
+            z.writestr(zipfile.ZipInfo(d), b"")
+        z.writestr("META-INF/container.xml", container)
+        z.writestr("Contents/content.hpf", hpf)
+        z.writestr("Contents/header.xml", header_xml)
+        z.writestr("Contents/section0.xml", section_xml)
+        z.writestr("Preview/PrvText.txt", "반입 테스트")
     return path
 
 
@@ -272,13 +297,13 @@ def test_all_preserves_text_content(hwpx_file):
 
 def test_zip_structure_preserved(hwpx_file):
     with zipfile.ZipFile(hwpx_file) as z:
-        names_before = z.namelist()
+        names_before = [n for n in z.namelist() if not n.endswith("/")]
         mimetype_before = z.read("mimetype")
 
     ph.process_file(str(hwpx_file), star=True, spacing=True)
 
     with zipfile.ZipFile(hwpx_file) as z:
-        assert z.namelist() == names_before
+        assert set(names_before) <= set(z.namelist())  # 기존 멤버 보존(정합이 추가는 하되 삭제 금지)
         assert z.namelist()[0] == "mimetype"
         assert z.read("mimetype") == mimetype_before
         bad = z.testzip()
@@ -286,6 +311,58 @@ def test_zip_structure_preserved(hwpx_file):
         for n in z.namelist():
             if n.endswith(".xml"):
                 ET.fromstring(z.read(n))  # 전체 xml 파싱 가능(구조 정상)
+
+
+# --- 패키지 정합 R043 (내부망 반입 판별) ---------------------------------
+
+def test_canonicalize_kordoc_package(tmp_path):
+    """kordoc 최소 패키지 → 한컴 정본 프로파일: 필수 멤버 보강·디렉터리 제거·OCF 시그니처."""
+    f = tmp_path / "k.hwpx"
+    build_kordoc_like(f)
+    ph.process_file(str(f), spacing=True)
+
+    raw = f.read_bytes()
+    with zipfile.ZipFile(f) as z:
+        infos = z.infolist()
+        names = z.namelist()
+        assert names[0] == "mimetype" and names[1] == "version.xml"
+        assert not any(n.endswith("/") for n in names)          # 디렉터리 엔트리 제거
+        for req in ("settings.xml", "META-INF/manifest.xml", "META-INF/container.rdf"):
+            assert req in names
+        first = infos[0]
+        assert first.compress_type == zipfile.ZIP_STORED
+        assert first.header_offset == 0 and not first.extra
+        assert raw[38:57] == MIMETYPE                            # OCF 평문 시그니처 위치
+        by = {i.filename: i for i in infos}
+        assert by["version.xml"].compress_type == zipfile.ZIP_STORED       # 정품 프로파일
+        assert by["Contents/header.xml"].compress_type == zipfile.ZIP_DEFLATED
+        cx = z.read("META-INF/container.xml").decode()
+        assert "container.rdf" in cx and "PrvText.txt" in cx     # rootfiles 정본화
+        assert 'href="settings.xml"' in z.read("Contents/content.hpf").decode()
+        rdf = z.read("META-INF/container.rdf").decode()
+        assert "Contents/header.xml" in rdf and "Contents/section0.xml" in rdf
+        ET.fromstring(z.read("version.xml"))                     # 스키마 파싱 가능
+        summary_names = names  # 텍스트 불변은 test_all_preserves_text_content가 보장
+
+
+def test_canonicalize_idempotent(tmp_path):
+    f = tmp_path / "k.hwpx"
+    build_kordoc_like(f)
+    ph.process_file(str(f), star=True)
+    b1 = f.read_bytes()
+    ph.process_file(str(f), star=True)
+    assert f.read_bytes() == b1
+
+
+def test_canonicalize_reports_summary(tmp_path, capsys):
+    f = tmp_path / "k.hwpx"
+    build_kordoc_like(f)
+    rc = ph.main([str(f), "--spacing"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    pc = out["package_canonical"]
+    assert "version.xml" in pc["added"] and pc["dirs_removed"] == 3
+    assert pc["container_rewritten"] and pc["settings_registered"]
 
 
 # --- CLI / exit code ------------------------------------------------------

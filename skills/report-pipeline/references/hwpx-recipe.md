@@ -220,9 +220,22 @@ R018(발신 줄 12pt)이 영구 미적용된 채로 §4 검증을 통과해 버�
   (실기동 30.29 → 25.02mm, R042). 그림 축소 시 파생 캐시(scaMatrix e1/e5 = curSz/orgSz·
   rotationInfo center = curSz/2)도 재계산한다(스테일 방지). slack이 이미 283 hu 이상인
   표는 비대상(멱등). 이 결함은 정적 XML로 판정 불가 — 한글 실기동 계측 필요.
-  **이 처리만은 플래그와 무관하게 항상 실행된다** — `process_file`이 모든 조건 블록 바깥에서
-  호출한다(실측). `--sender-size`만 준 호출에서도 표 폭이 조정되므로, 폭 조정을 원치 않는
-  중간 산출물에는 이 스크립트를 아예 돌리지 말 것.
+  **이 처리만은 표 폭 정합·패키지 정합(아래 R043)과 함께 플래그와 무관하게 항상 실행된다** —
+  `process_file`이 모든 조건 블록 바깥에서 호출한다(실측). `--sender-size`만 준 호출에서도
+  표 폭이 조정되므로, 폭 조정을 원치 않는 중간 산출물에는 이 스크립트를 아예 돌리지 말 것.
+- **패키지 정합 (R043, '26.7.29 내부망 반입 거부 건)**: kordoc 산출물은 hwpx **최소
+  패키지**(mimetype·container.xml·content.hpf·header·section·PrvText)라서 hwpx 확정
+  마커인 **version.xml이 없고**, 디렉터리 엔트리 3개(`META-INF/`·`Contents/`·`Preview/`)·
+  전량 STORED라는 정품에 없는 지문을 가진다 — mimetype+container.xml 구조는 EPUB류 일반
+  OCF와 같아 심층 구조 검사를 하는 반입 시스템(내부망 자료교환 등)이 hwpx로 판별하지 못하고
+  octet-stream → 미등록 확장자로 반려한다(타 hwpx는 동일 시스템에서 정상 유통 — 시스템이
+  아니라 산출물 문제, 사용자 확정). `canonicalize_package`가 **플래그 무관 상시** 적용:
+  version.xml·settings.xml(content.hpf manifest 등재)·META-INF/manifest.xml·container.rdf
+  보강(한컴 정품 '도식 Pool.hwpx' 실측 정본 템플릿), 디렉터리 엔트리 제거, container.xml
+  rootfiles 정본화(PrvText·container.rdf), 엔트리 순서·압축 프로파일(mimetype·version.xml·
+  미디어 STORED, XML DEFLATED)을 정품 저장기와 일치시킨다. 멱등(2회 실행 바이트 동일).
+  `validate_hwpx.py structural`이 OCF 시그니처(첫 엔트리 mimetype STORED·offset 0·extra 0·
+  38바이트째 평문 `application/hwp+zip`)와 필수 멤버를 검증해 회귀를 차단한다.
 - **표 캡션·셀 12pt (R023)**: 캡션(내장 hp:caption 포함)과 본문 콘텐츠 표(제목 박스 제외) 셀
   문단의 charPr을 폰트 유지·높이 1200(12pt)으로 치환한다.
 - **□ 절 제목 볼드 (R024)**: dae 문단 run charPr에 `<hh:bold/>` 변형을 배정한다.
@@ -337,6 +350,7 @@ python3 skills/report-pipeline/scripts/validate_hwpx.py \
 
 - `postprocess_hwpx.py` 보충: `--all` = `--star-footnote`+`--spacing`+`--header-banner`.
   값 인자가 필요한 `--sender-size`·`--star-indent`는 `--all`에 포함되지 않으며, 플래그를 하나도
-  주지 않으면 exit 2다. `apply_fit_page_width`(R036·R042)는 플래그와 무관하게 항상 실행된다.
+  주지 않으면 exit 2다. `apply_fit_page_width`(R036·R042)·`canonicalize_package`(R043)는
+  플래그와 무관하게 항상 실행된다.
   `--star-indent`는 CLI에 남아 있으나 **R019에서 폐기된 훅**이다 — 내어쓰기는 `--spacing`
   묶음이 처리하므로 표준 절차(§3.5)에서 쓰지 않는다.

@@ -79,7 +79,7 @@ flowchart TD
 
     S3 ==>|"게이트 피드백"| L
     S4 ==>|"검증 실패 · 수정"| L[("lessons.jsonl")]
-    L ==>|"동일 유형 2회 이상 → 승격"| R[("rules.md<br/>R001~R042")]
+    L ==>|"동일 유형 2회 이상 → 승격"| R[("rules.md<br/>R001~R043")]
     R ==>|"다음 보고서부터 자동 적용"| P
 
     classDef stage fill:#1f6feb22,stroke:#1f6feb,stroke-width:1.5px
@@ -134,14 +134,14 @@ report-harness/
 │   │   │   ├── md-profile.md              변환 가능한 마크다운 규격 + 린트 룰 8종
 │   │   │   ├── format-profile.kca.md      기관 양식 실측 프로파일(폰트·크기·여백)
 │   │   │   ├── hwpx-recipe.md             hwpx 변환 절차서
-│   │   │   ├── rules-seed.md              회귀 방지 규칙 R001~R042 (복리축적 시드)
+│   │   │   ├── rules-seed.md              회귀 방지 규칙 R001~R043 (복리축적 시드)
 │   │   │   ├── diagram-pool.md            표 기반 도식 패턴 카탈로그
 │   │   │   └── table-pool.md              표 부품 카탈로그
 │   │   ├── scripts/         ← 결정론 도구 (기계가 실행, LLM 판단 배제)
 │   │   │   ├── harness_config.py          설정 해석·기본값 폴백
 │   │   │   ├── lint_md_profile.py         초안 규격 검사 (룰 8종)
 │   │   │   ├── prep_report_md.py          변환 전 정규화 (무손실 보장)
-│   │   │   ├── postprocess_hwpx.py        ★ 양식 정합 후처리 (R011~R042)
+│   │   │   ├── postprocess_hwpx.py        ★ 양식 정합 후처리 (R011~R043)
 │   │   │   ├── validate_hwpx.py           구조·대조·수치 검증
 │   │   │   ├── check_image_size.py        이미지 규격 판정
 │   │   │   └── extract_format_profile.py  양식 파일에서 프로파일 추출
@@ -173,7 +173,7 @@ report-harness/
 **③ 규칙은 복리로 쌓인다.**
 게이트에서 받은 지적이 `lessons.jsonl`에 기록되고, 반복되거나 사용자가 확정하면 `rules.md`에
 `R0NN`으로 승격된다. 다음 보고서부터 그 규칙이 회귀검사로 자동 적용된다. 현재
-**R001~R042**가 시드로 들어 있다.
+**R001~R043**가 시드로 들어 있다.
 
 ---
 
@@ -244,7 +244,7 @@ prep 정규화 → kordoc generate_document → 이미지 규격판정·주입
 | `--spacing` | R013~R015 · R017 · R019 · R020 · R022~R025 · R027 · R031~R035 · R037~R040 (계층 간격·정렬·폰트·캡션) |
 | `--header-banner` | R030 · R041 (머리말 배너) |
 | `--sender-size 12` | R018 (발신 줄 12pt) — **`--all`에 포함되지 않아 별도 지정 필요** |
-| (플래그 무관 상시) | R036 · R042 (표 폭 본문 정합) |
+| (플래그 무관 상시) | R036 · R042 (표 폭 본문 정합) · **R043 (hwpx 패키지 정합 — version.xml 등 필수 멤버 보강, 내부망 반입 판별)** |
 
 왕복 대조에서 불일치가 나오면 최대 2회까지 재변환하고, 그래도 남으면 목록을 명시 보고한 뒤
 `20_draft.md`(SSOT)를 그대로 인도한다 — **틀린 hwpx를 조용히 내주지 않는다.**
@@ -266,7 +266,7 @@ flowchart TD
 
 `rules.md`의 각 항목에는 단계 태그(`[research]`/`[analyze]`/`[draft]`/`[export]`)가 붙고,
 각 단계는 **자기 태그 항목만** 프리플라이트에 반영한다. 첫 실행 시 `rules-seed.md`
-(R001~R042)가 `state_dir`로 복사되어 시드가 된다.
+(R001~R043)가 `state_dir`로 복사되어 시드가 된다.
 
 ### 2-7. 사용법 두 가지
 
@@ -462,7 +462,7 @@ Claude Code를 실행한 뒤 프롬프트에 순서대로 입력한다.
 
 1. `{cwd}/reports/{YYYYMMDD}/{HHMM}_{슬러그}/` 작업폴더 생성
 2. `{cwd}/.report-harness/` 상태 폴더 생성
-3. `rules-seed.md`(R001~R042)가 `.report-harness/rules.md`로 복사되어 복리축적 시드가 됨
+3. `rules-seed.md`(R001~R043)가 `.report-harness/rules.md`로 복사되어 복리축적 시드가 됨
 
 경로를 바꾸고 싶으면 [5. 설정](#5-설정-선택)을 보면 된다.
 
@@ -476,6 +476,7 @@ Claude Code를 실행한 뒤 프롬프트에 순서대로 입력한다.
 | 법령 조사가 안 된다 | `LAW_OC` 미등록 | [3-3](#3-3-korean-law-api-키-발급--무료-1분) 참조 후 재시작 |
 | 산출물이 어디 있는지 모르겠다 | 기본값이 실행위치 기준 | `{현재 작업 디렉토리}/reports/` 확인. 고정하려면 [5. 설정](#5-설정-선택) |
 | hwpx 서식이 양식과 다르다 | 후처리 누락 가능성 | `40_qa.md` 확인. `postprocess_hwpx.py`가 exit 1(대상 0건)이면 원인 규명 필요 |
+| 내부망 자료교환에서 반입 거부 (octet-stream·미등록 확장자) | 구버전 산출물 — 후처리 전 hwpx는 version.xml 등 필수 멤버가 없어 판별 실패 | 후처리를 거친 파일인지 확인(`validate_hwpx.py structural`이 `errors: []`이면 정상). 기존 산출물은 `postprocess_hwpx.py <파일> --spacing`만 다시 돌려도 패키지 정합(R043)이 적용된다 |
 | `"이어서 해줘"` 했더니 새 폴더가 생겼다 | 슬러그 부분일치 실패 | 건명을 함께 말한다 — `"AI성과측정 건 이어서 해줘"` |
 
 ### 4-7. 제거
@@ -506,7 +507,7 @@ Claude Code를 실행한 뒤 프롬프트에 순서대로 입력한다.
 | 키 | 없을 때 기본값 | 역할 |
 |---|---|---|
 | `reports_dir` | `{cwd}/reports` | 건별 작업폴더 루트(`{reports_dir}/{YYYYMMDD}/{HHMM}_{슬러그}/`) |
-| `state_dir` | `{cwd}/.report-harness` (자동 생성) | `rules.md`·`lessons.jsonl` 위치. 첫 실행 시 `rules-seed.md`(R001~R042)를 복사 |
+| `state_dir` | `{cwd}/.report-harness` (자동 생성) | `rules.md`·`lessons.jsonl` 위치. 첫 실행 시 `rules-seed.md`(R001~R043)를 복사 |
 | `knowledge_vault` | 없음 → vault 기능(사전지식 조회·적재) 생략 | 개인 지식 vault 루트 |
 | `template_hwpx` | 없음 → 번들 기본 서식 사용 | 기관 레터헤드·스타일 템플릿 병합용 |
 

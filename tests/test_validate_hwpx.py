@@ -2,10 +2,30 @@ import sys, pathlib, zipfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "skills/report-pipeline/scripts"))
 from validate_hwpx import structural_check, profile_counts, compare_texts
 
-def make_zip(tmp_path, xml=b"<?xml version='1.0'?><root/>"):
+MIMETYPE = b"application/hwp+zip"
+
+def make_zip(tmp_path, xml=b"<?xml version='1.0'?><root/>", *,
+             mimetype=MIMETYPE, mimetype_stored=True, mimetype_first=True,
+             with_version=True, with_dirs=False):
+    """한컴 정본 최소 패키지. 키워드로 반입 거부 유형을 재현한다."""
     p = tmp_path / "t.hwpx"
     with zipfile.ZipFile(p, "w") as z:
+        def put_mimetype():
+            zi = zipfile.ZipInfo("mimetype")
+            zi.compress_type = zipfile.ZIP_STORED if mimetype_stored else zipfile.ZIP_DEFLATED
+            z.writestr(zi, mimetype)
+        if mimetype_first:
+            put_mimetype()
+        if with_version:
+            z.writestr("version.xml", "<?xml version='1.0'?><hv:HCFVersion xmlns:hv='http://www.hancom.co.kr/hwpml/2011/version'/>")
+        if with_dirs:
+            z.writestr(zipfile.ZipInfo("Contents/"), b"")
+        z.writestr("META-INF/container.xml", "<container/>")
+        z.writestr("Contents/content.hpf", "<opf:package xmlns:opf='x'/>")
+        z.writestr("Contents/header.xml", "<?xml version='1.0'?><root/>")
         z.writestr("Contents/section0.xml", xml)
+        if not mimetype_first:
+            put_mimetype()
     return p
 
 def test_structural_ok(tmp_path):
@@ -14,6 +34,28 @@ def test_structural_ok(tmp_path):
 def test_structural_broken_xml(tmp_path):
     errs = structural_check(make_zip(tmp_path, b"<root><unclosed>"))
     assert errs and "section0.xml" in errs[0]
+
+# --- 반입 판별(OCF·패키지) 회귀 — '26.7.29 내부망 자료교환 반입 거부 건 ---
+
+def test_structural_missing_version_xml(tmp_path):
+    errs = structural_check(make_zip(tmp_path, with_version=False))
+    assert any("version.xml" in e for e in errs)
+
+def test_structural_mimetype_deflated(tmp_path):
+    errs = structural_check(make_zip(tmp_path, mimetype_stored=False))
+    assert any("STORED" in e for e in errs)
+
+def test_structural_mimetype_not_first(tmp_path):
+    errs = structural_check(make_zip(tmp_path, mimetype_first=False))
+    assert any("first entry" in e for e in errs)
+
+def test_structural_wrong_mimetype_content(tmp_path):
+    errs = structural_check(make_zip(tmp_path, mimetype=b"application/epub+zip"))
+    assert any("application/hwp+zip" in e for e in errs)
+
+def test_structural_directory_entries(tmp_path):
+    errs = structural_check(make_zip(tmp_path, with_dirs=True))
+    assert any("directory" in e for e in errs)
 
 def test_profile_counts():
     c = profile_counts("□ A\n ㅇ b 137명(23.7%)\n   - c\n＊ 각주\n| a | b |\n|---|---|\n")
