@@ -7,6 +7,17 @@ def test_plugin_manifest_valid():
     assert "version" in m and "description" in m
 
 
+def test_mcp_bundle_valid():
+    """번들 MCP는 kordoc(필수)·korean-law(선택) 둘뿐이며, 인증키를 값으로 박아두면 안 된다."""
+    mcp = json.loads((ROOT / ".mcp.json").read_text())
+    servers = mcp["mcpServers"]
+    assert set(servers) == {"kordoc", "korean-law"}, set(servers)
+    assert "kordoc" in servers["kordoc"]["args"]
+    # 키는 환경변수 참조만 허용 — 실제 값이 커밋되면 공개 저장소에 유출된다
+    law_oc = servers["korean-law"]["env"]["LAW_OC"]
+    assert law_oc.startswith("${") and law_oc.endswith("}"), f"LAW_OC 실값 유출 의심: {law_oc}"
+
+
 def test_marketplace_manifest_valid():
     mk = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text())
     assert mk["name"] and mk["description"] and mk["owner"]["name"]

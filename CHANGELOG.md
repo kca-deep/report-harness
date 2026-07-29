@@ -9,6 +9,18 @@
 - 동기화 부채 해소: installed↔repo (`inject_images.py`·`assets/kca-header-banner/` repo 누락분 복사)
 - 테스트 118 → 142
 
+## 0.3.0 (2026-07-29)
+- **MCP 번들**: `.mcp.json` 신설 — `kordoc`(필수, 키 불필요)·`korean-law`(선택) 2종이 플러그인
+  설치 시 함께 붙는다. 종전에는 필수 의존성인 kordoc을 사용자가 문서만 보고 직접 설치해야 했다.
+  `korean-law`의 법제처 인증키는 `${LAW_OC}` 환경변수 참조로만 두고 실값은 커밋하지 않는다
+  (회귀 가드 `test_mcp_bundle_valid`가 실값 유출을 차단)
+- README 전면 개편: "30초 시작 → 무엇을 해주나 → 사용법 → **스킬 구조** → 준비물 → 설정"
+  순으로 재구성. 설정을 §3→§6으로 내리고 '없어도 동작'을 앞세웠으며, 배포 제외·패키징 가드·
+  테스트는 개발자용 부록으로 분리. 개인 절대경로가 박혀 있던 설정 예시를 일반화
+- 의존성 정리: `opendart`(공시·재무, 기관보고서와 접점 희박)·`deep-research`(제3자 마켓플레이스
+  플러그인) 문서에서 제외. `insane-search`는 의존성 표에서 '있으면 좋은 것'으로 강등.
+  tool-playbook·report-research SKILL.md 동반 정리 — 스킬 동작은 불변(도구 부재는 원래 대체 흡수)
+
 ## 0.2.0 (2026-07-29)
 - **배포 가능 상태 도달**: `.claude-plugin/marketplace.json` 신설 — 저장소가 플러그인이자
   마켓플레이스를 겸한다(루트 `source: "./"`, superpowers·vercel·firecrawl과 동일 패턴).

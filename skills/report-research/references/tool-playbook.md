@@ -8,20 +8,20 @@
 
 | 출처 유형 | 우선 도구 | 비고 |
 |---|---|---|
-| 법령·판례·행정규칙 | MCP `korean-law` | `search_law`·`get_law_text`·`search_decisions`·`get_decision_text` 등. 조문·판결 원문 대조에 강함. |
-| 공시·재무·기업정보 | MCP `opendart`(PlayMCP) | `search_disclosures`·`get_financial_account`·`get_company_info` 등. 상장사·공공기관 공시 확인용. |
-| 한글 문서(hwp·hwpx·pdf·docx) 파싱 | MCP `kordoc` | `parse_document`(본문)·`parse_table`(표)·`parse_metadata`. 제공자료(모드 I) 처리에도 동일 도구. |
-| 접근 차단·봇 방지 사이트(X/Twitter, Reddit, 네이버 블로그 등) | `insane-search` 스킬 | WebFetch가 402/403을 반환하거나 알려진 차단 플랫폼(X, Reddit, YouTube, GitHub, Medium, Substack, StackOverflow, 네이버 등)일 때. |
-| 다출처 교차검증이 필요한 심층 주제 | `deep-research` 스킬 | 여러 출처를 팬아웃 검색 → 적대적 검증 → 인용 종합까지 한 번에 수행. 시간이 걸리므로 §5 시간 예산과 맞바꿔 판단. |
+| 법령·판례·행정규칙 | MCP `korean-law` **(번들)** | `search_law`·`get_law_text`·`search_decisions`·`get_decision_text` 등. 조문·판결 원문 대조에 강함. **법제처 Open API 인증키(`LAW_OC`)를 사용자가 직접 발급해야 동작한다** — 키가 없으면 이 행을 건너뛴다. |
+| 한글 문서(hwp·hwpx·pdf·docx) 파싱 | MCP `kordoc` **(번들)** | `parse_document`(본문)·`parse_table`(표)·`parse_metadata`. 제공자료(모드 I) 처리에도 동일 도구. API 키 불필요. |
+| 접근 차단·봇 방지 사이트(X/Twitter, Reddit, 네이버 블로그 등) | `insane-search` 스킬 | WebFetch가 402/403을 반환하거나 알려진 차단 플랫폼(X, Reddit, YouTube, GitHub, Medium, Substack, StackOverflow, 네이버 등)일 때. 별도 설치 필요. |
 | 라이브러리·프레임워크·SDK 공식 문서 | MCP `Context7` | 버전별 최신 API 문서. 기술 스펙 확인용(보고서 주제가 기술 도입 검토일 때 유용). |
 | YouTube 영상 내용 | `youtube-transcript` MCP | 자막 추출 후 텍스트로 인용. |
 | 위 어느 것에도 해당 없는 일반 웹 조사 | `WebSearch` → `WebFetch` | 기본값. 검색으로 후보 URL 확보 후 본문 페치. |
 
 ## 환경 편차 흡수 규칙
 
-**환경에 없는 MCP·스킬은 해당 행을 건너뛰고 일반 도구로 대체한다.** 이 플러그인은 위 도구들을
-번들하지 않는다 — 사용자 환경에 이미 설치돼 있으면 활용하고, 없으면 표의 마지막 행(`WebSearch`
-→ `WebFetch`)으로 강등해도 조사 자체는 계속 진행한다. 도구 부재로 조사를 중단하지 않는다.
+**환경에 없는 MCP·스킬은 해당 행을 건너뛰고 일반 도구로 대체한다.** 이 플러그인이 번들하는
+MCP는 `kordoc`·`korean-law` 둘뿐이고(`.mcp.json`) 나머지는 사용자 환경에 있으면 활용한다.
+`korean-law`는 번들되지만 인증키가 없으면 연결에 실패하므로 **미설치와 동일하게 취급**한다.
+없는 도구는 표의 마지막 행(`WebSearch` → `WebFetch`)으로 강등해도 조사 자체는 계속 진행한다.
+도구 부재로 조사를 중단하지 않는다.
 
 대체가 발생하면 SKILL.md §6 종료 훅의 lessons 기록에 `gate:"research"`로 남긴다(예: feedback
 "korean-law 미설치 — WebSearch로 법령 원문 검색 대체").

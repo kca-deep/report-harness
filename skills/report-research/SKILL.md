@@ -5,8 +5,8 @@ description: "기관보고서 작성을 위한 자료조사 스킬 — 조사 '�
 
 # report-research — 산출 계약 중심 조사 스킬
 
-이 스킬은 **조사 방법을 규정하지 않는다.** 환경에 있는 조사 도구(deep-research, insane-search,
-firecrawl, korean-law, opendart, kordoc, WebSearch·WebFetch, Context7, youtube-transcript 등)를
+이 스킬은 **조사 방법을 규정하지 않는다.** 환경에 있는 조사 도구(번들 MCP `kordoc`·`korean-law`
++ 사용자 환경의 insane-search, firecrawl, Context7, youtube-transcript, WebSearch·WebFetch 등)를
 자유롭게 선택해 조사하라. 강제되는 것은 단 하나 — **조사 산출물이 아래 계약대로 작업폴더에
 쌓이는 것**뿐이다. 이 계약을 지켜야 후속 단계(`/report-analyze`·`/report-draft`)가 결과물을
 그대로 읽어 이어받는다.
@@ -160,7 +160,7 @@ claudian vault의 거버넌스(스테이징 → 검토·승인 통과분만 적�
   근접하면 즉시 축소 전략으로 전환한다.
 - **축소 전략** (상한 접근 시 자동 적용):
   1. 남은 팬아웃 단위 수를 줄인다 — 우선순위 낮은 단위는 생략하고 공백으로 보고한다.
-  2. 심층 다출처 도구(deep-research 등) 대신 **1패스 검색**(WebSearch 1회 + 상위 결과 확인)
+  2. 심층 다출처 팬아웃 조사 대신 **1패스 검색**(WebSearch 1회 + 상위 결과 확인)
      으로 강등한다.
   3. 교차검증 목표(§3, 독립 출처 2개)를 핵심 주장 1~2건으로만 한정한다.
 - 15분을 넘겨 완료된 경우도 실패로 취급하지 않되, §6 종료 요약과 lessons에 소요시간과 원인을
@@ -186,7 +186,7 @@ claudian vault의 거버넌스(스테이징 → 검토·승인 통과분만 적�
    회귀검사에 반영되는 복리축적의 시작점이다.
 
 ```json
-{"date":"2026-07-22","case":"{work_dir 슬러그}","gate":"research","feedback":"deep-research 미설치 환경 — WebSearch 1패스로 대체","fix":"tool-playbook 대체 경로 적용","promoted":false}
+{"date":"2026-07-22","case":"{work_dir 슬러그}","gate":"research","feedback":"korean-law 인증키 미설정 — WebSearch로 법령 원문 검색 대체","fix":"tool-playbook 대체 경로 적용","promoted":false}
 ```
 
 도구 선택 매핑은 `references/tool-playbook.md`를 참고한다.
