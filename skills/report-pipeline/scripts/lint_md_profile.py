@@ -51,7 +51,9 @@ def lint_text(text):
                 if leading_spaces < depth_base:
                     depth_base = leading_spaces
                 bullet_run += 1
-                if bullet_run == 6:
+                # R045: 상위 계층 하나에 딸리는 하위 계층은 최대 2개 — 3개째부터 위반.
+                # 초과분은 개수를 쳐내지 말고 성격이 가까운 항목끼리 통합 서술로 합친다.
+                if bullet_run == 3:
                     out.append({"line": i, "rule": "bullet-overflow", "text": stripped[:80]})
         if TRIPLE_STAR.search(line):
             out.append({"line": i, "rule": "non-bold-markup", "text": stripped[:80]})

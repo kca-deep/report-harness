@@ -28,9 +28,13 @@ def test_table_over_6_cols():
     text = "| a | b | c | d | e | f | g |\n| - | - | - | - | - | - | - |\n"
     assert "table-too-wide" in rules(lint_text(text))
 
-def test_bullet_overflow_under_one_yo():
-    text = "ㅇ 요지\n" + "".join(f"   - 상세{i}\n" for i in range(6))
+def test_bullet_overflow_under_one_yo():   # R045: 3개째부터 위반
+    text = "ㅇ 요지\n" + "".join(f"   - 상세{i}\n" for i in range(3))
     assert "bullet-overflow" in rules(lint_text(text))
+
+def test_two_bullets_allowed_under_one_yo():   # R045: 2개까지는 합법
+    text = "ㅇ 요지\n   - 상세1\n   - 상세2\n"
+    assert "bullet-overflow" not in rules(lint_text(text))
 
 def test_html_tag():
     assert "html-tag" in rules(lint_text("ㅇ 내용 <br> 줄바꿈\n"))
@@ -46,9 +50,9 @@ def test_depth_ok_within_4_levels():
     text = "□ 절\n ㅇ 요지\n   - 상세\n※ 단서\n＊ 각주\n"
     assert lint_text(text) == []
 
-def test_bullet_run_resets_at_section():   # □ 경계에서 카운터 리셋
-    text = ("ㅇ A\n   - a\n   - b\n   - c\n"
-            "□ 새 절\n   - d\n   - e\n   - f\n")
+def test_bullet_run_resets_at_section():   # □ 경계에서 카운터 리셋 (R045 상한 2개 기준)
+    text = ("ㅇ A\n   - a\n   - b\n"
+            "□ 새 절\n   - c\n   - d\n")
     assert "bullet-overflow" not in rules(lint_text(text))
 
 def test_chevron_label_not_html():         # 코퍼스 관례: < > 영문 혼용 라벨
