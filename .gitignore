@@ -8,3 +8,8 @@ __pycache__/
 # 런타임이 쓰는 양식 자산은 skills/report-pipeline/assets/ 번들 사본이다(form/ 참조 경로 0).
 form/
 docs/analysis/
+
+# 산출물·복리 state (reports_dir·state_dir 기본 거처) — 기관 내부 내용이 담기므로
+# public 배포 레포에 절대 올리지 않는다. form/ 제외와 같은 사유다.
+# 하네스 코드는 이 폴더에 의존하지 않는다(경로는 ~/.claude/report-harness.json 설정 주입).
+report/
