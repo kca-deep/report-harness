@@ -31,9 +31,9 @@
                     적용한다(멱등). 자산: assets/kca-header-banner/.
   --all             --star-footnote·--spacing·--header-banner를 적용.
 
-실측 근거: /Users/bcchung81/workspace/claudian/reports/20260722/1313_하네스-AI성과-관리체계/
-research/fetched/양식-문단간격/추출결과.md — 계층 간격은 paraPr 위/아래 간격이 아니라
-글자크기를 줄인 빈 스페이서 문단으로 구현된다(문단모양 자체 간격 필드는 전부 0).
+실측 근거(20260722 하네스-AI성과-관리체계 건, 양식 문단간격 추출 — 원 작업폴더는 보관 종료):
+계층 간격은 paraPr 위/아래 간격이 아니라 글자크기를 줄인 빈 스페이서 문단으로 구현된다
+(문단모양 자체 간격 필드는 전부 0). 확정값은 format-profile.kca.md §7에 승계돼 있다.
 """
 import sys, json, re, copy, zipfile, pathlib, tempfile, os
 import xml.etree.ElementTree as ET
