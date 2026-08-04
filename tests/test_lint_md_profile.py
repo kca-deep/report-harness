@@ -6,7 +6,7 @@ def rules(violations):
     return {v["rule"] for v in violations}
 
 def test_clean_gaejosik_passes():
-    # 괄호 리드는 3음절 이상 구체 명사구(R049) — 표 헤더의 2음절 벌려쓰기(`구 분`)는 계속 합법.
+    # 괄호 리드는 3음절 이상 구체 명사구(R051) — 표 헤더의 2음절 벌려쓰기(`구 분`)는 계속 합법.
     text = ("□ 추진 배경\n"
             " ㅇ (추진 목적) AI 활용 **격차 해소**를 위한 환경 조성\n"
             "   - ChatGPT Team 6개 계정 구독(약 3.2백만원/연) 지원\n"
@@ -59,29 +59,29 @@ def test_bullet_run_resets_at_section():   # □ 경계에서 카운터 리셋 (
 def test_chevron_label_not_html():         # 코퍼스 관례: < > 영문 혼용 라벨
     assert "html-tag" not in rules(lint_text("ㅇ <AI 활용 방안> 관련 논의\n"))
 
-# ── 개선본 대조로 확정된 실무 관례 (R049~R051·R054) ──────────────────────────
+# ── 개선본 대조로 확정된 실무 관례 (R051~R053·R056) ──────────────────────────
 
-def test_caption_numbered_detected():      # R054: 캡션에 표 일련번호 금지
+def test_caption_numbered_detected():      # R056: 캡션에 표 일련번호 금지
     assert "caption-numbered" in rules(lint_text("[ 표1. 추진 총괄 요약 ]\n"))
 
 def test_caption_descriptive_ok():         # 내용 서술형 캡션은 합법
     assert lint_text("[ 월별 바이브코딩 교육 진행 ]\n") == []
 
-def test_annex_defer_detected():           # R051: 괄호로 붙임에 설명을 미루는 표기
+def test_annex_defer_detected():           # R053: 괄호로 붙임에 설명을 미루는 표기
     text = "ㅇ (초기 설계) 3레이어 하이브리드 구조(상세 붙임1 참조)\n"
     assert "annex-crossref" in rules(lint_text(text))
 
 def test_annex_closing_note_ok():          # 맺음의 ※ 참조는 코퍼스 합법 관례
     assert "annex-crossref" not in rules(lint_text("※ 세부내용은 붙임 참조\n"))
 
-def test_lead_two_syllable_detected():     # R049: 2음절 괄호 리드 (벌려쓴 형태·붙인 형태 모두)
+def test_lead_two_syllable_detected():     # R051: 2음절 괄호 리드 (벌려쓴 형태·붙인 형태 모두)
     assert "lead-too-short" in rules(lint_text("ㅇ **(품 질)** 오류율 0%\n"))
     assert "lead-too-short" in rules(lint_text("ㅇ **(배포)** 배포 완료\n"))
 
 def test_lead_specific_noun_ok():          # 3음절 이상 구체 명사구는 합법
     assert lint_text("ㅇ **(서비스 품질)** 오류율 0%\n") == []
 
-def test_footnote_overflow_detected():     # R050: 용어 각주 4개 초과
+def test_footnote_overflow_detected():     # R052: 용어 각주 4개 초과
     text = "".join(f"＊ 용어{i} : 설명\n" for i in range(5))
     assert "footnote-overflow" in rules(lint_text(text))
 
