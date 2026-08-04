@@ -1,9 +1,11 @@
 import pathlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REF = ROOT / "skills/report-pipeline/references"
-# lint_md_profile.py 구현 룰 8종 (브리프 6종 + misplaced-marker + highlight-unpaired(R040))
+# lint_md_profile.py 구현 룰 12종 (브리프 6종 + misplaced-marker + highlight-unpaired(R040)
+# + 개선본 대조로 확정된 실무 관례 4종: caption-numbered·annex-crossref·lead-too-short·footnote-overflow)
 RULES = ["inline-markdown", "non-bold-markup", "table-too-wide", "depth-exceeded",
-         "bullet-overflow", "html-tag", "misplaced-marker", "highlight-unpaired"]
+         "bullet-overflow", "html-tag", "misplaced-marker", "highlight-unpaired",
+         "caption-numbered", "annex-crossref", "lead-too-short", "footnote-overflow"]
 
 def test_md_profile_mentions_all_lint_rules():
     text = (REF / "md-profile.md").read_text(encoding="utf-8")

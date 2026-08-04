@@ -14,13 +14,33 @@ HTML = re.compile(
     r"(?i)</?(br|div|span|table|thead|tbody|tr|td|th|img|em|strong|"
     r"hr|ul|ol|li|sub|sup|font|center|h[1-6])\b[^>]*>"
 )
+# R054: 표 캡션에 "표N." 일련번호를 붙이지 않는다 — 캡션은 표가 무엇을 보여주는지 서술한다.
+CAPTION_NUM = re.compile(r"^\s*[\[<]\s*표\s*\d+\s*[.．]")
+# R051: 본문에서 붙임으로 설명을 미루는 인라인 유보 표기. 맺음의 "※ 세부내용은 붙임 참조"는
+# 코퍼스 합법 관례이므로 대상이 아니다 — "(상세 …붙임N…)" 형태의 괄호 유보만 잡는다.
+ANNEX_DEFER = re.compile(r"[(（]\s*상세[^)）]*붙\s*임")
+# R049: ㅇ 괄호 리드가 2음절 추상어인 경우. (품 질)·(배 포)처럼 벌려쓴 형태와 (품질) 형태 모두.
+LEAD_SHORT = re.compile(r"^[ㅇ○]\s*\*{0,2}[(（]\s*([가-힣])\s*([가-힣])\s*[)）]")
+FOOTNOTE_MAX = 4   # R050: 용어 각주(＊ 선두 문단) 문서당 상한 — 초과분은 용어 자체를 업무언어로 교체
 
 def lint_text(text):
     out, bullet_run = [], 0
+    footnote_run = 0    # 문서 전체 ＊ 각주 문단 수 (R050)
     depth_base = None  # 현재 ㅇ/○/□ 블록에서 첫 대시의 들여쓰기(최상위 기준선)
     for i, line in enumerate(text.splitlines(), 1):
         if not line.strip():
             continue
+        # 캡션·붙임유보·괄호리드·각주 상한 (개선본 대조로 확정된 실무 관례)
+        if CAPTION_NUM.match(line):
+            out.append({"line": i, "rule": "caption-numbered", "text": line.strip()[:80]})
+        if ANNEX_DEFER.search(line):
+            out.append({"line": i, "rule": "annex-crossref", "text": line.strip()[:80]})
+        if LEAD_SHORT.match(line.strip()):
+            out.append({"line": i, "rule": "lead-too-short", "text": line.strip()[:80]})
+        if line.strip().startswith("＊"):
+            footnote_run += 1
+            if footnote_run == FOOTNOTE_MAX + 1:
+                out.append({"line": i, "rule": "footnote-overflow", "text": line.strip()[:80]})
         # `==` 하이라이트 마커(R040)는 한 줄 안에서 짝이 맞아야 한다 — 홀수면 잔존 위험
         if len(HIGHLIGHT_TOKEN.findall(line)) % 2 == 1:
             out.append({"line": i, "rule": "highlight-unpaired", "text": line.strip()[:80]})
